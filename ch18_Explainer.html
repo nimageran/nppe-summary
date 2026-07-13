@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 18 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 18 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Trust Fund Pipeline vs. The Lien Wall</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 6</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Trust Fund Pipeline vs. The Lien Wall",
+    text: "The Construction Lien Act (a law that helps protect people who work on construction projects and have not been paid) gives unpaid workers (people such as contractors, subcontractors, or suppliers who provided work or materials but did not receive their money) two different ways to protect themselves and try to get paid. The first protection is called a lien (a legal claim placed on a property because money is owed). A lien works like a legal lock on the land or building. It does not mean the worker owns the property, but it means the owner usually cannot easily sell, refinance, or transfer the property until the unpaid amount is dealt with. The second protection is called a trust fund (money that must be kept and used only for a specific purpose). In construction, project money is treated like a protected money pipeline (the flow of money from the owner to the contractor and then to subcontractors and suppliers). This means a contractor cannot take money received for one construction project and use it for other things, such as paying another project’s bills or personal expenses, while workers from that same project are still unpaid. In simple words: the lien protects the worker by putting pressure on the property, while the trust fund protects the worker by controlling how the project money is used. They are two separate tools that solve the same problem: making sure people who did the work actually get paid.",
+    ex: "You build a foundation for a developer, and they refuse to pay. You file a lien, freezing their ability to sell the land. Simultaneously, you use the trust remedy to threaten the developer's CEO with personal bankruptcy if they dare use the foundation money to pay for their new office furniture."
+  },
+  {
+    title: "Diagram 2 — The Holdback Mechanic",
+    text: "A holdback (a part of the money that is temporarily kept aside instead of being paid immediately) is not a punishment and it is not because the contractor did something wrong. It is a legal protection system required by law. When an owner (the person or company paying for a construction project) pays the general contractor (the main contractor responsible for managing the entire project and hiring other workers), the owner must keep 10% of the payment aside instead of giving all the money to the general contractor. This saved money acts like a safety fund (money kept for protection if something goes wrong). The money stays frozen until the lien period (a legally allowed time when unpaid workers or companies can make a claim for money they are owed) ends. This period is usually around 45 days after the project is completed, but the exact time depends on the law in that location. If the general contractor (the main contractor) fails to pay the subcontractors (companies or workers hired by the general contractor to complete parts of the project), for example because the contractor goes bankrupt (the company cannot pay its debts), the money that was held back can be used to pay the unpaid subcontractors. In simple words, the holdback is like a locked emergency money box that protects workers from losing the money they earned.",
+    ex: "You bill the owner $100,000 for your structural steel work. The owner legally must only cut you a check for $90,000. They lock the remaining $10,000 away. If you suddenly go bankrupt and fail to pay your steel supplier, the owner uses that $10,000 to pay the supplier directly, protecting their property from a lien."
+  },
+  {
+    title: "Diagram 3 — The Multiple-Holdback Trap",
+    text: "The biggest mistake people make is thinking the holdback only happens once at the very top. Holdbacks actually happen at every single tier of the project. The owner holds back ten percent from the general contractor. The general contractor must hold back ten percent from the subcontractor. And the subcontractor must hold back ten percent from the sub-subcontractor. If you pay a lower-tier worker one hundred percent of their invoice, you have broken the law, and you will be forced to pay that ten percent out of your own pocket if someone below them files a lien.",
+    ex: "You are a mechanical contractor who hires a ductwork supplier. The supplier finishes and sends you an invoice for $50,000. If you are a nice guy and pay them the full $50,000, and they fail to pay the sheet metal factory, the factory will lien the project. The court will force you to pay the factory $5,000 of your own money because you illegally failed to hold back the ten percent."
+  },
+  {
+    title: "Diagram 4 — Clearing the Lien Wall (Discharge vs. Vacating)",
+    text: "If a lien (a lien is a legal claim against a property because someone says they are owed money for work, materials, or services) is stopping the sale of a property, the owner (the person or company that owns the property) has two ways to remove it. The first way is discharging the lien (completely getting rid of the lien). This happens when the problem is fully resolved—for example, the owner pays the money that is owed, or the person who filed the lien misses the legal deadline and loses the right to keep the lien. The second way is vacating the lien (temporarily removing the lien from the property without deciding who is right). This is useful when the owner still believes they do not owe the money and wants a court (the legal system that decides disputes) to make the final decision, but also needs to sell the property immediately. Instead of leaving the lien attached to the property, the owner gives the court cash or a bond (a bond is money or a financial guarantee that can be used to pay the claim if the owner eventually loses the case) equal to the amount of the lien. The court then moves the lien from the property to the cash or bond. This allows the property to be sold right away, while the legal dispute continues and the court later decides who is actually entitled to the money.",
+    ex: "A plumber puts a $20,000 lien on a new house you are trying to sell tomorrow. You think the plumber did terrible work and you refuse to pay them. To save your house sale, you hand $20,000 in cash to the court to Vacate the lien. The house sells successfully, and you spend the next year fighting the plumber in court over who gets to keep the $20,000 sitting in the court's bank account."
+  },
+  {
+    title: "Diagram 5 — The Information Squeeze (Right to Information)",
+    text: "In a construction project, there are usually several levels of companies involved. At the top is the owner (the person or company paying for the project). The owner hires a general contractor (also called the prime contractor—the main company responsible for managing the entire project). The general contractor then hires subcontractors (smaller companies or workers hired to do specific jobs, such as electrical, plumbing, or painting). Because subcontractors are at the bottom of this chain, they usually do not know the project's financial situation (for example, whether the owner has paid the general contractor or whether there is enough money left to pay everyone). To protect them, the Lien Act (a law that protects contractors and subcontractors from not being paid) gives subcontractors an important legal right called the Right to Information. If a subcontractor has not been paid, they can legally require the owner, the general contractor, or even the bank (if the project is being paid for with a loan) to provide financial information. They can ask to see the prime contract (the main contract between the owner and the general contractor), the state of the accounts (records showing who has been paid and how much money is still owed), and how much money is left in the mortgage (the loan being used to finance the project). If the owner refuses to provide this information when required by law, the owner may become financially liable (legally responsible for paying money to cover the subcontractor's losses).",
+    ex: "You are a concrete supplier and the general contractor keeps telling you, 'The owner hasn't paid me yet, so I can't pay you.' You use your Right to Information to legally force the owner to show you the accounting books. You see the owner actually paid the general contractor in full three weeks ago. You caught the contractor lying and can now aggressively pursue the trust money."
+  },
+  {
+    title: "Diagram 6 — The General Contractor's Payment Shields",
+    text: "General contractors (the main company hired to complete a construction project) worry about a situation called double payment (having to pay twice for the same work). For example, a general contractor pays a subcontractor (a company hired by the general contractor to do a specific part of the project, like electrical work or plumbing), but the subcontractor does not pay the workers or suppliers below them. Those unpaid people can make a lien (a legal claim against the property to demand payment for work or materials they provided). The general contractor may then have to pay these lower-level workers, even though they already paid the subcontractor once. To protect themselves, general contractors use payment protections (rules and documents that reduce the risk of losing money). One protection is requiring a Labour and Material Payment Bond (a guarantee from a bonding company or insurance company that workers and suppliers will be paid if the subcontractor fails to pay them). Another protection is requiring a Statutory Declaration (a written statement where someone legally promises that the information they provide is true) before releasing monthly payments. In this document, the subcontractor must declare (officially state) that all lower-tier workers (people or companies hired by the subcontractor, such as sub-subcontractors, suppliers, or workers) have been paid. If the subcontractor intentionally lies in this legal document, it is not only a breach of contract (failure to follow the promises made in a contract). It can also be perjury (a crime where someone knowingly makes a false statement after officially promising that the statement is true).",
+    ex: "A drywall subcontractor asks you, the general contractor, for their $30,000 monthly payment. You refuse to hand over the check until they sign a sworn Statutory Declaration stating they already paid the drywall factory. They sign it. Later, you find out they lied and the factory was never paid. You can now call the police and have the subcontractor charged with criminal fraud."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

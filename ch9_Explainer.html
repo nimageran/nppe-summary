@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 9 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 9 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Dual-Source Authority Test</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 13</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Dual-Source Authority Test",
+    text: "There are two separate ways a person can have the power to make a deal for someone else. This person is called an agent (an agent is someone who is allowed—or claims to be allowed—to act on behalf of another person or company). The person or company the agent represents is called the principal (the principal is the owner, employer, or company that the agent is acting for). The first way is express authority (the principal clearly tells the agent, \"Yes, you have permission to do this\"). The second way is apparent authority (other people reasonably believe the agent has permission because of something the principal said, did, or allowed, even if the agent was never actually given permission). These are two separate paths—the agent only needs one, not both, for the principal to be legally bound (required by law to honor the deal). A very important rule is that apparent authority comes from the principal, not the agent. An agent cannot create authority simply by saying, \"Don't worry, I'm allowed to sign this.\" Instead, there must be something the principal said, did, or allowed that would make a reasonable person believe the agent had that authority. If the agent had neither express nor apparent authority, then the principal is not responsible for the deal. Instead, the agent who falsely claimed to have authority may have to personally take responsibility (be legally responsible themselves) for what they promised.",
+    ex: "You're a junior engineer at a manufacturing shop. Your plant manager sends a company-wide email saying you're leading procurement on a new retrofit, and to route all supplier quotes through you. That email alone creates apparent authority, so if you approve a fifty-thousand-dollar steel order, the company is bound to pay it, even though your manager never discussed a dollar figure with you privately. Now here's the twist: that same week you walk into a completely unrelated hydraulics supplier your manager never mentioned, and tell them you handle purchasing and to put a thirty-thousand-dollar pump on the company's account. No email, no introduction, nothing the company said or did ever reached that supplier. The company owes nothing at all, and that supplier's only option is to come after you personally, because a claim of authority can never come from the agent's own mouth."
+  },
+  {
+    title: "Diagram 1b — The Authority Limit Disclosure Rule",
+    text: "This idea is about limits on authority (the maximum amount of power or permission someone has). Imagine your manager tells you privately (only you know about it) that you can approve purchases up to $5,000. However, the written contract (the official document that other people can read) says that a site engineer (the engineer in charge of work at the project site) can approve purchases up to $10,000. If an outside company sees that written contract, they are allowed to trust the $10,000 limit, because that is the only information they can see. The manager's private instruction is legally invisible (the law treats it as if the outside company never knew it existed). As a result, the company is bound by the contract (legally required to honor the deal). Your manager can still discipline you (for example, give you a warning or another workplace consequence) for disobeying the private instruction, but that is an internal matter (a problem between you and your employer). It does not cancel or change the contract that was already made with the outside company.",
+    ex: "The prime contract says the site engineer can approve changes up to ten thousand dollars. The owner privately texts the engineer, don't approve anything over five thousand without calling me first. The engineer ignores the text and approves an eight-thousand-dollar change. The owner is still bound to pay the full eight thousand, because the contractor never saw that text and had every right to rely on the ten-thousand-dollar figure printed in the contract. Here's the twist: if that five-thousand-dollar limit had instead been written directly into the same contract the contractor signed, it would no longer be a secret at all, and the contractor would be bound by it. The moment a limit appears somewhere the other side can actually see, it becomes enforceable against them."
+  },
+  {
+    title: "Diagram 2 — Imputed Knowledge",
+    text: "This idea is about imputed knowledge (the law pretending someone knows something even if they personally never heard it). Imagine a company has workers called agents (agents are employees or people who act for a company). The company they work for is the principal (the principal is the owner or employer who is responsible for the business). If an agent learns something important while doing their normal job, or is officially told about a problem, the law automatically treats the principal as if they also know it. This is called imputed knowledge (meaning “knowledge is legally passed up to the company”). So the principal cannot defend themselves by saying, “I never actually heard about it,” because the law assumes the information reached them through their worker.",
+    ex: "For example, a site inspector (a worker who checks construction safety and quality) notices a serious crack in a concrete pillar during a normal inspection but does not report it. Later, the pillar fails and causes damage. The owner (principal) tries to argue in court, “I didn’t know about the crack.” The court rejects this, because the inspector’s knowledge is treated as the owner’s knowledge, so the owner is still legally responsible (held accountable by law). But there is an important limit. If the inspector only noticed the crack by accident while doing something completely unrelated, like checking paint color instead of structure safety, then it becomes less clear. In general, imputed knowledge only transfers information that the agent learns within their job duties (what they were actually hired to do). If the information is found completely outside their role, the law is more careful about whether it should still count as the principal’s knowledge."
+  },
+  {
+    title: "Diagram 3 — The Indemnity Direction Flip",
+    text: "This idea is about something called an indemnity clause (an indemnity clause is a rule in a contract where one person agrees to pay for certain losses or damages, kind of like “I will cover the cost if something goes wrong”). It is basically about who pays when something gets damaged or goes wrong. The direction of the clause matters a lot. In the standard Canadian version, it usually says something like: “I will pay you if my own mistake or negligence (negligence = carelessness that causes harm) causes you a loss.” This is basically normal common sense in law: if you cause damage through your own carelessness, you pay for it. But there is another version, often called an American-style or “flipped” indemnity clause, where it says: “I will pay you even if your mistake or negligence causes the loss.” This is much stronger and more dangerous, because it means you are agreeing to pay for someone else’s carelessness, even if you did nothing wrong. Courts (judges) often dislike this kind of clause because it removes pressure from the other party to act carefully, so they usually only accept it if the wording is extremely clear and impossible to misunderstand.",
+    ex: "Here is the simple example: you sign a flipped indemnity clause (a rule where you take responsibility for the other side’s mistakes) with a developer (a developer is a person or company doing a construction project). The developer’s equipment operator (the worker controlling machines like bulldozers) accidentally crashes a bulldozer into a wall and destroys it. Even though it was clearly the developer’s fault, the contract says you must pay for the damage, so you end up covering the cost. Now flip it: if the clause instead says each party is only responsible for damage caused by its own negligence, then responsibility stays where it belongs. In that case, the developer would pay for the wall because their own worker caused the damage, and you are not responsible for their mistake."
+  },
+  {
+    title: "Diagram 3b — Indemnity Can Add Liability But Cannot Remove It",
+    text: "This idea is about how indemnity clauses (a contract rule that says who pays for losses or damages) change responsibility. Think of it like a one-way valve (something that lets pressure go in one direction only, like air going into a balloon but not easily coming back out). An indemnity clause usually makes your responsibility bigger, not smaller. It can “add extra weight” onto you by saying you must pay for things you normally wouldn’t be legally responsible for under normal law (normal rules outside the contract). But it usually does not remove responsibility you already had unless the contract uses very clear and very strong wording. In other words, it must explicitly say something like “this replaces all other legal responsibility,” and courts (judges who interpret contracts) are very strict (they set a high standard and do not accept vague or unclear wording). So the simple idea is: an indemnity clause can push more risk onto you easily, but it almost never takes existing risk away unless the contract says it extremely clearly and directly.",
+    ex: "This idea is about legal responsibility for mistakes in engineering design (who must pay or fix things if something is done wrong). Normally, you are only responsible for your own mistakes in design (this is called negligence, meaning you failed to be careful enough and caused harm or loss). Now imagine you sign an indemnity clause (a written rule in a contract where you agree to pay for certain problems). This clause says you will cover all design errors on the project, not just your own. That means your responsibility gets bigger: you may now also have to pay for mistakes made by others, like the architect (the person who designs buildings). However, this extra responsibility does not remove your original responsibility for your own mistakes—it just adds more on top of it. The key twist is this: if the contract uses very strong and clear words saying the indemnity clause replaces and removes all other liability (meaning it cancels your normal responsibility completely and replaces it with something new), then it might erase your original liability. But courts (the legal system that interprets contracts and decides disputes) are very strict about this. They carefully check the wording before agreeing that your old responsibility is truly gone."
+  },
+  {
+    title: "Diagram 4 — Extras vs Credits: Who Pays for a Change",
+    text: "This idea is about changes in a construction project (when something in the original plan has to be modified after work has started). The main question is not just “did something change?”, but “who caused the change?” because that decides who pays the extra cost. If the owner (the person or company paying for the project) decides to improve or upgrade the design, or if there is a hidden site condition (something unexpected found in the ground or building, like bad soil or old pipes), then the owner pays for the extra work. If the change happens because of a design error (a mistake in the engineer’s or designer’s plan), then we ask whether that mistake was negligence (carelessness or not meeting a reasonable professional standard). If the designer simply made a reasonable interpretation (a fair and logical understanding) of a vague requirement (an unclear instruction), then it is not negligence, and the owner still pays the contractor (the company doing the physical work) for the extra effort. Even if there is real negligence, in many cases the cost is not argued over in court. Instead, it is often covered by a contingency budget (a built-in emergency fund, usually about 5–10% of the total project cost) that is already set aside for surprises and mistakes.",
+    ex: "For example, imagine an engineer reads a fire code (official safety rules for buildings) and reasonably thinks it requires 10 sprinklers (fire safety water devices). Later, the fire marshal (safety inspector) says the code actually requires 15 sprinklers. Because the code was genuinely unclear, the engineer was not negligent, and the owner pays for the extra 5 sprinklers as a valid change. But now imagine a different situation: the fire code was actually very clear, and the engineer simply misread it. In that case, there is no ambiguity, just a mistake. If that mistake is judged to be negligence, then the cost does not go to the owner—it may instead be paid by the engineer’s own company (often through insurance or internal responsibility), because the error was avoidable and not a reasonable interpretation."
+  },
+  {
+    title: "Diagram 5 — The Impact Cost Reservation Trap",
+    text: "This idea is about change orders in construction (a change order is when the original work is changed and a new price is discussed). It comes from a real court case called the Doyle Construction Co. v. Carling O’Keefe Breweries Ltd. and it creates a serious risk if you are not careful with your wording. Imagine the owner asks you for a firm price (a fixed total price) for extra work. You give a number, but you do NOT clearly say that some extra hidden costs might come later. These extra costs are called impact costs (impact costs are extra money needed because the change affects other parts of the project, like delays, extra labor, or ripple effects on other work). The problem is this: if you do not clearly say upfront that these extra costs are NOT included, then the law assumes your price includes everything. That means the owner is allowed to believe your number is the full and final price. Later, you cannot go back and ask for more money for those ripple effects. To protect yourself, you must either clearly say at the time of quoting that impact costs are not included and will be charged separately, or you must calculate and include them in your original price so there are no surprises later.",
+    ex: "Imagine the owner (the person paying for the project) asks you to change something, like moving a wall. You are the contractor (the person doing the work). You give a price of $5,000, which you say covers materials and labour, and the owner agrees. Later, you discover the change caused extra hidden damage, called impact costs (extra costs that happen indirectly, like delays, lost time, or equipment sitting idle). In this case, the project gets delayed, and that delay costs $20,000. The problem is this: if you did NOT clearly say at the time of quoting that your $5,000 price does NOT include these ripple effects, the law assumes your price was the full and complete price (the total cost for everything related to the change). That means you lose the right forever to ask for the extra $20,000 later, even if the cost is real. The owner is allowed to believe: “We already agreed on the full price, nothing more will be added.” However, if at the moment you gave the $5,000 quote you had clearly written something like: “This price covers only direct work; any schedule delays or ripple effects will be billed separately,” then everything changes. That simple warning protects you, because it tells the owner that the price is not the full story. In that case, you can still come back later and ask for the extra $20,000. So the key idea is: if you stay silent about hidden extra costs when you quote, the law treats your price as final. If you clearly warn about them up front, you keep your right to claim them later."
+  },
+  {
+    title: "Diagram 6 — Change Order vs Change Directive",
+    text: "This idea is about how construction changes get paid for (when something in a project is added, removed, or modified). A Change Order (a written agreement that changes the original contract) is used when both the owner and contractor have time to agree on a fixed price before work starts. This is usually a lump-sum price (one agreed total amount). A Change Directive (an instruction to proceed with extra work before agreeing on price) is used when there is no time to wait or no agreement yet, so the owner tells the contractor: “Start the work now.” The price is figured out later, usually as cost-plus (actual cost of labour and materials + a small agreed profit/fee). Now, how this connects to extra vs credit: Extra (extra work) (work added beyond the original contract) usually increases the contract price. Credit (work removed or reduced from the original contract) usually decreases the contract price. So both Change Orders and Change Directives can include: Extras → more money added to the contract Credits → money taken away from the contract The difference is not what changes, but how the price is handled: With a Change Order, extras or credits are priced before work starts and agreed as a fixed adjustment. With a Change Directive, extras or credits are done first, and the price is settled afterward based on actual cost (cost-plus), because there was no time to agree upfront. So in simple terms: Extra/credit = what changes in the work. Change Order / Change Directive = how that change gets priced and approved.",
+    ex: "The owner wants a new roof, there's plenty of time, so both sides agree on a hundred thousand dollars and sign a Change Order before any work starts. Separately, a main pipe bursts and floods the site mid-project. There's no time to negotiate anything, so the owner issues a Change Directive, work starts immediately, and the contractor bills hourly costs and materials afterward. Here's the twist: what if the owner calls the roof replacement a Change Directive too, just because they'd rather skip negotiating a price, even though there's no real emergency? Simply labelling it a directive doesn't make it one if there's no genuine urgency, and a contractor forced into those terms without a real emergency has grounds to push back and insist on a properly negotiated Change Order instead."
+  },
+  {
+    title: "Diagram 7 — Performance Under Protest",
+    text: "This idea comes from a legal case, the Kiewit case, and it is about a common construction problem. Imagine you are a contractor (a contractor is a person or company hired to do construction work for a project). The owner (the owner is the person or company paying for the project) tells you to do extra work. You believe this extra work is not included in your original agreement (contract), so it should cost more money. The owner disagrees and says, “No, this was always part of the original job.” Now you are in a difficult situation. You cannot simply refuse (say no and stop working), because that could break your contract and cause serious problems. But you also cannot just do the work silently (do it without saying anything) and hope to ask for extra payment later. If you do the work without clearly objecting, the law may treat your silence as agreement with the owner. This means the court may assume: “If you didn’t complain at the time, then you must have accepted that it was included in the original contract,” and you may get no extra payment. The safe/legal move is to give a formal notice of protest (a clear written message saying: “I disagree—this is extra work and I expect additional payment”) before you start the work. If you only complain after finishing the work, it is usually too late.",
+    ex: "The owner tells you to paint the ceiling. You believe painting was never in your scope. If you simply pick up a brush and do it to keep the peace, the court treats that as an admission it was part of your original job, and you get paid nothing extra. You have to send something like, we consider this outside our contracted scope and are performing it under protest, reserving our right to claim payment, before touching the brush. Here's the twist: what if you send that same protest notice only after you've already finished painting the ceiling? A protest sent after the work is done looks like an afterthought rather than a genuine objection, and it's far weaker, because timing is the whole mechanism here. The protest has to come before performance, not as a fix afterward."
+  },
+  {
+    title: "Diagram 8 — Pay-If-Paid vs Pay-When-Paid",
+    text: "This is about two contract terms that sound similar but work very differently in real life. Imagine a general contractor (the main construction company in charge of the whole project) hires a subcontractor (a smaller company hired to do part of the work, like electrical or plumbing). The money usually comes from the owner (the person who is paying for the whole project). The first idea is Pay-When-Paid (this means “you get paid later, not never”). It only changes timing. The general contractor can wait to pay the subcontractor until the owner pays them first. But if the owner never pays (for example, the owner goes bankrupt or refuses to pay), the general contractor still has to pay the subcontractor eventually from their own money. So the subcontractor is still protected in the end. The second idea is Pay-If-Paid (this means “you only get paid if something happens”). This is a condition precedent (a required condition that must happen before any legal duty exists). Here, the subcontractor only gets paid if the owner actually pays the general contractor. If the owner never pays, then legally the obligation to pay the subcontractor never even starts—so the subcontractor may get nothing. Courts (judges) usually don’t like Pay-If-Paid clauses because they are harsh. So if the contract wording is not extremely clear, courts will assume it is the softer version (Pay-When-Paid) instead, which is fairer to the subcontractor.",
+    ex: "The owner goes bankrupt and never pays a hundred-thousand-dollar invoice to the general contractor. Under a Pay-When-Paid clause, the general contractor still has to pay a twenty-thousand-dollar drywall subcontractor out of their own funds, it's just a delay, not an excuse. Under a genuine, strictly worded Pay-If-Paid clause, the drywall sub gets exactly zero dollars, because they absorbed the owner's insolvency risk. Here's the twist: what if the contract just says the subcontractor will be paid within thirty days of the contractor receiving payment from the owner, with nothing more explicit than that? That wording is ambiguous, and courts default an ambiguous clause to the milder Pay-When-Paid interpretation. To actually create a true Pay-If-Paid result, the clause needs unmistakable language, something like payment by the owner is a condition precedent to any obligation to pay the subcontractor."
+  },
+  {
+    title: "Diagram 9 — Incorporation by Reference: The Hidden Risk Chain",
+    text: "This idea is about how subcontractors (a subcontractor is a company or worker hired by a main contractor to do part of a bigger job, like plumbing or electrical work) can still be legally affected by a big contract they didn’t personally read. That big contract is called the prime contract (the main agreement between the owner of the project and the general contractor, who is the main company responsible for the whole job). Even if the subcontractor never actually opens or reads that document, they can still be bound (legally required to follow it) if the contract was available for them to access (meaning they could have gone and looked at it if they wanted to). This is especially true for the technical parts of the contract, like scope of work (what exactly needs to be built or done), specifications (exact rules like materials, sizes, or quality standards), and other construction requirements. The law assumes that in business, especially construction, people are responsible for checking important technical rules if they are available. However, there is an exception. Courts may protect subcontractors from hidden or unfair commercial clauses (these are contract rules that are not about building work itself but about legal or business risks, like where disputes must be solved). For example, a clause might say disputes must go to arbitration (a private legal process instead of court) in a faraway place. If these types of clauses are buried deep in long documents that no reasonable subcontractor would realistically read or expect, courts may say: “This is unfair,” and refuse to enforce those specific parts.",
+    ex: "You're a flooring subcontractor bidding on a hospital job. You sign a one-page document saying you're bound by the prime contract. You never drove to the architect's office to read the full five-hundred-page prime contract. You're still legally bound by its technical requirements, say strict rules on flooring adhesive thickness, because you had the theoretical opportunity to go read it. Here's the twist: what if buried on page four-eighty of that same prime contract there's a clause saying subcontractors waive all rights to sue and must resolve every dispute through an obscure, expensive arbitration process in another province? That kind of purely commercial, rights-stripping clause, as opposed to a technical spec you'd expect to be bound by, is exactly the type courts are more willing to strike down as unenforceable against a sub who never realistically had reason to dig it out."
+  },
+  {
+    title: "Diagram 10 — The Unforeseen Conditions Disclaimer Failure",
+    text: "Owners sometimes try to dodge liability for hidden site conditions, like bad soil, by putting a disclaimer in the tender documents saying the bidder must independently investigate everything. Courts routinely strike these disclaimers down for three reasons. First, giving a bidder two weeks to do what would realistically take a two-year geotechnical investigation is practically absurd. Second, forcing contractors to price for unknown risks just makes them pad every bid heavily, which usually costs the owner more overall anyway. Third, a principle from a real case, the Begro case, says an owner cannot actively hide a site report they already have and then blame the contractor for not independently discovering that same problem. This idea is about hidden problems on a construction site (things underground or not easily visible, like bad soil). Sometimes the owner (the person or company hiring the work) tries to avoid responsibility by writing a rule in the tender documents (the official documents sent to contractors asking them to submit a price) that says: “the bidder (the contractor who is offering a price) must investigate everything themselves and accept all risks.” This is called a disclaimer (a statement that tries to remove legal responsibility). Courts usually do not accept these disclaimers for a few simple reasons. First, it is unrealistic: giving a contractor two weeks to check everything properly is not enough time to do a real scientific soil investigation, which would normally take a very long time and a lot of money. Second, it actually makes projects more expensive, because contractors will add extra money to their bids to protect themselves from unknown risks (this is called padding the bid, meaning they increase the price just in case something bad happens). Third, the law says an owner cannot hide important information (like a soil report they already have) and then blame the contractor for not discovering it. In a real case called the BG Checo International Ltd. v. British Columbia Hydro and Power Authority principle (often discussed with similar reasoning), the court made it clear that you cannot keep key site information secret and then try to escape responsibility using fine print in the contract.",
+    ex: "The owner secretly holds a geotechnical report showing massive underground boulders. They hide it and add a disclaimer saying the contractor assumes all subsurface risk. The contractor hits the boulders and loses millions. The judge ignores the disclaimer entirely, because the owner acted in bad faith by concealing information they already had, and orders the owner to pay for the rock removal. Here's the twist: what if the owner never had any report at all, and the boulders were a genuine surprise to everyone, with a standard bid period and a standard disclaimer? Without any concealment of pre-existing knowledge, the Begro principle doesn't apply the same way, and a properly worded, reasonable disclaimer is far more likely to be upheld."
+  },
+  {
+    title: "Diagram 11 — Coast Hotels: Number of Reviews vs Timing of Reviews",
+    text: "This comes from a real case, Coast Hotels, about a professional's standard of care during site reviews. The key distinction is between the number of reviews performed and their timing relative to the actual construction sequence. Doing more reviews than required means nothing if they're clustered at the wrong points, missing the critical window when the actual problem was created and still visible. The law cares about whether you were watching at the moments that mattered, not about a raw count. And a professional can never excuse a sloppy review by pointing to being underpaid, the required standard of care doesn't flex based on your fee. This idea is about how carefully a professional must do their job when checking work on a construction site (this is called a standard of care, meaning the level of care and attention the law expects from a trained professional like an engineer). In the Coast Hotels Ltd. v. Royal Oak Inn case, the key point was not just how many times the professional did inspections (a site review is when someone goes to a construction site to check if the work is being done correctly), but when those inspections happened. Even if the professional visited the site many times, it does not help if those visits were at the wrong moments and they missed the time when the mistake actually happened and could still be seen. The law cares about whether the professional was paying attention at the critical moments (the exact time when problems would appear), not just the total number of visits. Also, a professional cannot defend poor or careless work by saying they were paid less money. The required level of care does not change based on salary or fee—you still must do the job properly regardless of how much you were paid.",
+    ex: "The contract requires ten inspections. You do fifteen, more than required. But five happen before the concrete is poured, and the other ten happen only after the building is already painted. You completely skipped the middle phase, exactly when the pipes were being installed, and the pipes later burst. You're fully liable, because none of your fifteen inspections actually covered the moment the error was made. Here's the twist: what if you'd instead done only the required ten inspections, but scheduled several specifically during the plumbing rough-in phase, catching the pipe installation while it was still visible and correctable? You'd likely meet the standard of care despite fewer total inspections, because timing your reviews where the risk actually lived matters more than raw volume."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    // While editing is on, clicks land in the text to place the cursor —
+    // don't let that also trigger jump-to-diagram/playback.
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    // Sanity check: warn (don't block) if the picked file doesn't look like this chapter's Explainer.
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      // Prevent Enter from inserting stray line breaks that would break the
+      // narration when it's read aloud; Shift+Enter still works if truly needed.
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+// Turns arbitrary user-typed text into a safe JS string literal so quotes,
+// backslashes, or line breaks the user types can never corrupt the file.
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    // Rebuild each segment's text/ex from the live DOM (current edited values),
+    // keeping titles exactly as they were — titles drive the mind map's audio pairing.
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    // Update the in-memory SEGMENTS + clear dirty markers so it matches what's now on disk.
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>
