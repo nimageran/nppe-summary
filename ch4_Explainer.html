@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 4 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 4 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Property Classification Tree</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 8</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Property Classification Tree",
+    text: "The law divides property (anything that can be owned) into two main categories. The first is real property (land and things that are permanently attached to the land, such as a house, building, or garage). These things are considered part of the land because they are meant to stay there. However, owning the land does not always mean you also own the mineral rights (the legal right to own and remove valuable natural resources, such as oil, natural gas, or gold, that are buried underground). In many places, those rights belong to the government instead of the landowner. The second category is personal property (everything you can own that is not real property). Personal property is divided into two groups. The first group is chattels (physical items that you can see and touch, such as a car, laptop, phone, or chair). The second group is intangible property (things you own that you cannot physically touch but still have legal value), such as intellectual property (creations of the mind, like an invention, book, or software) and licenses (official legal permissions that allow you to do something, such as a driver's license or a software license).",
+    ex: "You buy a plot of land to build a chemical plant. The dirt and the plant are Real Property. The fleets of delivery trucks parked outside are tangible Personal Property. The patent for the chemical you mix inside is intangible Personal Property."
+  },
+  {
+    title: "Diagram 2 — The Fixture Test: The Mobile Home Problem",
+    text: "Just because something is physically bolted down (attached to the ground or a building with bolts) does not automatically make it real property (land and things that are legally considered to be a permanent part of the land or building). To decide whether an item is a fixture (something that has become a permanent part of the property and usually stays with it when it is sold) or a chattel (personal property that belongs to someone and can usually be removed and taken with them), courts (judges who decide legal disputes) look at two main things: permanence (how permanently the item is attached) and purpose (why it was attached in the first place). If you bolt something down only to keep it stable while you use it, it usually remains personal property (something you still own and can normally remove). However, if you bolt it down because you intend it to be a permanent improvement (something meant to permanently improve or become part of the land or building), then it usually becomes real property, meaning it is legally considered part of the property itself.",
+    ex: "You bolt a massive $100,000 industrial drill press to the floor of your rented warehouse purely to stop it from vibrating during use. Because the purpose is to benefit the drill, not the warehouse, it remains your personal chattel, and you can legally unbolt it and take it with you when your lease ends."
+  },
+  {
+    title: "Diagram 3 — Joint Tenancy vs Tenancy in Common",
+    text: "The way you share ownership of property (for example, a house, a building, or a piece of land) determines what happens to your share when you die. One type of ownership is called Joint Tenancy (two or more people own the property together as one unit, rather than each owning a separate percentage). Under this arrangement, if one owner dies, their share automatically goes to the surviving owner(s). This is called the right of survivorship (the legal rule that the surviving owner automatically receives the deceased owner's share). The deceased person's heirs (the family members or other people who inherit their property after they die) receive nothing from that property. The second type of ownership is called Tenancy in Common (each owner has their own separate share of the property, such as 50%, 30%, or 20%). If one owner dies, their specific share does not automatically go to the other owner. Instead, it goes to their heirs. This means the surviving business partner may suddenly find themselves co-owning the property (sharing ownership) with the deceased owner's family instead of their original partner.",
+    ex: "Imagine you and your business partner buy an office building together. There are two common ways to legally own it together. The first is called Joint Tenants (a type of shared ownership where, if one owner dies, their share automatically goes to the other owner). The second is called Tenants in Common (a type of shared ownership where each owner has their own share, and when they die, that share goes to their family or whoever they named in their will). Now imagine you own the building as Joint Tenants, and you suddenly die. Your business partner immediately becomes the owner of 100% of the building. This happens because of the right of survivorship (a legal rule that automatically transfers the deceased owner's share to the surviving owner). Your spouse and children receive nothing from the building, even if you wanted them to inherit your half. However, if you had owned the building as Tenants in Common, your 50% share would become part of your estate (everything you own that is passed on after your death), and your spouse, children, or anyone you named in your will could inherit that share instead of your business partner automatically receiving it."
+  },
+  {
+    title: "Diagram 4 — 'Runs With the Land': The Boundary That Decides Everything",
+    text: "When you buy a piece of property (land, a house, or a building), you may also receive some legal obligations or rights (rules created by law that affect how the property can be used), even if you never personally agreed to them. If a right or obligation runs with the land (it is permanently attached to the property itself, not to the owner), it automatically applies to every new owner when the property is sold. Two common examples are easements (a legal right that allows someone else to use part of your property for a specific purpose, such as a neighbor using your driveway to reach their home) and negative covenants (a legal promise that says you cannot do certain things with the property, such as building above a certain height or operating a business there). These stay with the property no matter who owns it. However, a personal licence (permission that one person gives another person to use the property, without creating a permanent legal right) and a positive covenant (a promise to do something, such as mowing the lawn, maintaining a fence, or sharing maintenance costs) usually apply only to the original people who made the agreement. When the property is sold, these personal promises normally do not transfer (they do not automatically apply to the new owner).",
+    ex: "Imagine you buy a house from someone who owned it before you. Before selling the house, the previous owner made a promise (a legal agreement) with the neighbor that says: \"I will never build a structure (a building or any construction) taller than two floors, so the neighbor can keep their nice view.\" This type of promise is called a negative restrictive covenant (a rule that says what a property owner cannot do on their land). The important part is that this promise runs with the land (the rule stays connected to the property itself, not just the person who originally made the promise). This means the rule can still apply even when the property is sold to a new owner. Therefore, even though you personally never signed this agreement, you are still legally required to follow it. You cannot build a three-story house because the restriction belongs to the land, not only to the previous owner. When you bought the property, you also bought it with this existing rule attached to it. Think of it like buying a used car with a rule attached to it saying, \"This car cannot be painted red.\" Even if you never agreed to that rule yourself, if the rule is legally attached to the car, you must follow it. In property law, some promises work the same way—they travel with the property when ownership changes."
+  },
+  {
+    title: "Diagram 5 — Torrens vs Registry System",
+    text: "Canada uses two different systems for recording land ownership (systems that keep official information about who owns a property). These systems decide how easy or difficult it is to find out who actually owns a piece of land. In much of Western Canada, the Torrens system (a modern land ownership system that keeps one official record for each property) is used. Under this system, there is a Certificate of Title (an official document showing the current owner of the land and important information about the property, such as debts or legal claims called liens). You only need to check this one updated document to know who owns the property and whether there are any claims against it. In parts of Eastern Canada, the older Registry system (a system that stores historical documents showing past land transactions) is used. Instead of one clear document showing the current truth, there are many old records collected over many years. To find out who really owns the land, you often need a lawyer (a legal professional who understands property law) to examine these records and follow the history of ownership step by step. In simple terms: the Torrens system is like checking the current owner in a single online account, while the Registry system is like searching through a huge box of old receipts to figure out what happened.",
+    ex: "You want to buy a plot of land in Alberta to build a substation. Under the Torrens system, your lawyer pulls a single digital certificate that guarantees the seller owns it free and clear. It takes five minutes, and you can buy it immediately with total legal safety."
+  },
+  {
+    title: "Diagram 6 — The Real Property Interest Spectrum",
+    text: "Not all property rights (legal rights that allow someone to own, use, control, or benefit from a piece of property) are the same. Some rights give a person a lot of control, while others only give a person a small or temporary permission to do something. Think of it like different levels of access to a house. A Lease (an agreement where someone is allowed to use and live in a property for a certain period of time) gives the tenant (the person renting the property) exclusive possession (the right to physically use and control the property and prevent others, including the owner in many cases, from using it without permission). A Mortgage (a legal agreement where a bank gives you money to buy property and uses the property as security for the loan) does not mean the bank owns your house. Instead, it gives the bank the right to sell the property if you fail to pay the loan. An Easement (a legal right that allows someone to use part of another person's property for a specific purpose) gives another person a limited right to use your land. For example, your neighbor may have the permanent right to walk across your driveway to reach their house, even though they do not own your driveway. A Restrictive Covenant (a legal rule attached to a property that limits what the owner can do with it) controls certain actions on the property. For example, it may say that houses in a neighborhood cannot be painted certain colors or cannot be used for certain purposes. A Licence (a simple permission to use something without giving ownership or strong property rights) is the weakest type of right. It is usually temporary and can often be cancelled. For example, a movie ticket gives you permission to enter the theatre and watch a movie, but you do not own the seat or have a permanent right to use it. The main idea is: some property rights give strong control, while others only give limited permission. A lease gives strong use rights, a mortgage protects the lender's money, an easement gives limited use of someone else's land, a restrictive covenant controls what can be done with property, and a licence is only temporary permission to use something. Simplified Explanation: Property rights are not all equal; some give people more control while others only give temporary permission. A lease lets a tenant use and control a property for a certain time, even though they do not own it. A mortgage protects the bank by allowing it to sell the property if the borrower does not repay the loan. An easement allows someone to use another person’s land for a specific purpose, while a restrictive covenant creates rules about how property can be used. A licence is the weakest right because it only gives temporary permission to use something. Example: Imagine a house and different people have different rights connected to it. A tenant renting the house can live there and control who enters during the lease. A bank with a mortgage cannot live there but can sell the house if the owner does not pay the loan. A neighbor may have an easement allowing them to use the driveway. The neighborhood rules may stop the owner from making certain changes through a restrictive covenant. A visitor with a licence, like a guest or movie ticket holder, only has permission to use the space temporarily.",
+    ex: "You grant a utility company an Easement to run high-voltage power lines across the edge of your property. That is a permanent property interest. But if you just tell a local farmer he can park his truck on your land for the weekend, that is a Licence, and you can legally kick him off ten minutes later."
+  },
+  {
+    title: "Diagram 7 — The Intellectual Property Selection Tree",
+    text: "You cannot protect every idea with a patent (a legal protection that gives an inventor the right to control a new and useful invention). The law separates different types of creations into different categories, and each category has its own type of protection. Copyright (protection for original creative works) automatically protects things like written words, computer code, music, drawings, and other artistic works. Patents protect physical inventions (real products, machines, or processes that exist in the real world) that are new (not already known), useful (have a practical purpose), and meet the legal requirements for an invention. Trademarks (protection for names, symbols, or designs that identify a company or product) protect things like brand names, logos, and slogans. Industrial Design protection (protection for the visual appearance of a product) protects the attractive shape, pattern, or appearance of products that are produced in large quantities, such as the unique shape of a phone or a chair. Integrated Circuit protection (special protection for the design and layout of computer chips) protects the arrangement of parts inside microchips. However, if your creation is only a pure idea (a thought, concept, or plan that has not been turned into something specific), you usually cannot protect it with these methods. In that case, the only way to protect it may be a Trade Secret (private information that gives you an advantage, such as a formula, method, or business strategy, which you protect by keeping it confidential). In simple words: you cannot protect an idea just because you thought of it—you need to put it into the right legal category and use the correct type of protection.",
+    ex: "You invent a revolutionary new pump. The physical mechanical pumping action gets a Patent. The user manual you wrote gets a Copyright. The catchy brand name 'SuperPump' gets a Trademark. And the specific, cool-looking curve of the plastic casing gets an Industrial Design."
+  },
+  {
+    title: "Diagram 8 — IP Terms of Protection: A Timeline Comparison",
+    text: "Intellectual property (IP) means creations of the mind that the law protects, such as inventions, books, designs, logos, and brand names. However, these protections do not last forever. Each type of intellectual property has a specific time limit. Copyright (legal protection for creative works like books, music, drawings, and software) lasts for 70 years after the creator dies. After that, anyone can use the work without needing permission. Patents (legal protection given to an invention, such as a new machine or technology) last for 20 years from the date the inventor files the application. After those 20 years, anyone can legally copy and use the invention. Industrial designs (protection for the visual appearance or shape of a product) and integrated circuit topographies (protection for the design layout of electronic circuits) last for 10 years. Trademarks (words, names, symbols, or logos that identify a company or product) are different. They last for 15 years at a time, but they can be renewed forever as long as the owner keeps using and protecting them. However, a trademark owner cannot simply keep the name forever without effort. If they stop using the trademark or fail to protect it from misuse, they can lose their trademark rights (lose the legal ownership and protection of that brand name or symbol).",
+    ex: "You patent a new drill bit. Twenty years later, your patent expires, and every cheap knock-off factory in the world starts legally manufacturing your exact design. But because you constantly defended your Trademark name 'DiamondDrill,' none of them are legally allowed to use your famous brand name on their boxes."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>
