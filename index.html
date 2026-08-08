@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0B1020">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NPPE">
+<link rel="manifest" href="manifest.webmanifest">
+<title>NPPE Reader — Practical Law</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0B1020;          /* page */
+  --ink2:#121A2C;         /* raised surface */
+  --ink3:#1A2338;         /* control surface */
+  --rule:#27324F;         /* hairlines */
+  --brass:#E8B44A;        /* the one accent: brass, like a law-library lamp */
+  --brass-dim:#8a6a25;
+  --mint:#57D6A8;         /* "heard" state only */
+  --paper:#F2EEE4;        /* reading text */
+  --paper2:#B9C0D0;
+  --paper3:#78829C;
+  --lit:rgba(232,180,74,.16);
+  --fs:17px;              /* reading size, user adjustable */
+  --dock:150px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--ink);
+  background-image:
+    radial-gradient(900px 500px at 85% -10%, rgba(232,180,74,.07), transparent 60%),
+    radial-gradient(700px 400px at 0% 0%, rgba(87,214,168,.05), transparent 55%);
+  color:var(--paper);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+.wrap{max-width:680px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 16px var(--dock) 16px}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.mark{
+  width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(150deg,#1d2740,#141c2e);border:1px solid var(--rule);
+  font-family:Newsreader,Georgia,serif;font-size:22px;color:var(--brass);line-height:1;
+}
+.hd h1{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.hd p{font-size:11.5px;color:var(--paper3);letter-spacing:.04em;margin-top:1px}
+.hd{flex:1;min-width:0}
+.iconbtn{
+  width:40px;height:40px;flex:none;border-radius:11px;border:1px solid var(--rule);
+  background:var(--ink2);color:var(--paper2);font-size:16px;cursor:pointer;
+  display:grid;place-items:center;transition:.15s;
+}
+.iconbtn:active{transform:scale(.94)}
+.iconbtn:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+
+/* ---------- overall progress strip ---------- */
+.overall{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:11.5px;color:var(--paper3)}
+.overall .track{flex:1;height:4px;border-radius:4px;background:var(--ink3);overflow:hidden}
+.overall .fill{height:100%;background:linear-gradient(90deg,var(--brass-dim),var(--brass));width:0%;transition:width .4s}
+
+/* ---------- reader card ---------- */
+.reader{
+  position:relative;background:linear-gradient(170deg,#151E33,#111828);
+  border:1px solid var(--rule);border-radius:18px;padding:20px 18px 22px 18px;
+  display:grid;grid-template-columns:34px 1fr;column-gap:14px;
+}
+.margin{position:relative}
+.marginnum{
+  font-family:Newsreader,Georgia,serif;font-size:26px;font-weight:500;color:var(--brass);
+  line-height:1;letter-spacing:-.03em;
+}
+.marginlbl{font-size:9px;letter-spacing:.14em;color:var(--paper3);margin-top:4px;text-transform:uppercase}
+.rail{position:absolute;left:11px;top:56px;bottom:0;width:2px;background:var(--rule);border-radius:2px;overflow:hidden}
+.railfill{position:absolute;top:0;left:0;right:0;height:0%;background:var(--brass);transition:height .35s ease}
+.eyebrow{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper3);display:flex;gap:10px;align-items:center}
+.eyebrow .heard{color:var(--mint)}
+.dtitle{
+  font-family:Newsreader,Georgia,serif;font-size:25px;line-height:1.25;font-weight:600;
+  letter-spacing:-.015em;margin:8px 0 14px 0;
+}
+.prose{font-family:Newsreader,Georgia,serif;font-size:var(--fs);line-height:1.85;color:#E7E3D8}
+.prose s-en{display:inline;border-radius:4px;padding:1px 0;cursor:pointer;transition:background .2s}
+.prose s-en.lit{background:var(--lit);box-shadow:0 0 0 4px var(--lit)}
+.exwrap{margin-top:18px;border-left:3px solid var(--brass-dim);padding:2px 0 2px 14px}
+.exlbl{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin-bottom:6px;border-radius:4px;display:inline-block;padding:1px 4px}
+.exlbl.lit{background:var(--lit)}
+.ex{font-family:Newsreader,Georgia,serif;font-size:calc(var(--fs) - 1px);line-height:1.8;color:#D8D4C8}
+
+/* recall mode */
+body.recall .prose,body.recall .exwrap{filter:blur(7px);opacity:.55;pointer-events:none;transition:.25s}
+body.recall.revealed .prose,body.recall.revealed .exwrap{filter:none;opacity:1;pointer-events:auto}
+.revealbar{display:none;margin-top:14px}
+body.recall .revealbar{display:block}
+body.recall.revealed .revealbar{display:none}
+.revealbar button{width:100%;padding:12px;border-radius:12px;border:1px dashed var(--brass-dim);background:transparent;color:var(--brass);font:600 13px/1 "IBM Plex Sans",sans-serif;cursor:pointer}
+
+/* ---------- dock ---------- */
+.dock{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;
+  background:rgba(11,16,32,.93);backdrop-filter:blur(14px);
+  border-top:1px solid var(--rule);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom)) 16px;
+}
+.dock-in{max-width:680px;margin:0 auto}
+.status{font-size:11.5px;color:var(--paper3);display:flex;gap:8px;align-items:center;margin-bottom:9px}
+.status .now{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status .timer{color:var(--brass)}
+.transport{display:flex;gap:10px;align-items:center}
+.tbtn{
+  flex:none;width:52px;height:48px;border-radius:14px;border:1px solid var(--rule);
+  background:var(--ink3);color:var(--paper2);font-size:15px;cursor:pointer;transition:.12s;
+}
+.tbtn:active{transform:scale(.94)}
+#play{
+  flex:1;height:48px;border:none;border-radius:14px;cursor:pointer;
+  background:linear-gradient(135deg,#F0C263,var(--brass));color:#241a04;
+  font:700 15px/1 "IBM Plex Sans",sans-serif;letter-spacing:.01em;
+}
+#play.on{background:linear-gradient(135deg,#6FE0B8,#3BBF92);color:#04231a}
+.chips{display:flex;gap:8px;margin-top:9px;overflow-x:auto;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex:none;padding:7px 11px;border-radius:10px;border:1px solid var(--rule);
+  background:var(--ink2);color:var(--paper2);font:500 12px/1 "IBM Plex Sans",sans-serif;cursor:pointer;
+}
+.chip.active{border-color:var(--brass);color:var(--brass)}
+.chip b{font-weight:600;color:var(--paper)}
+
+/* ---------- sheets ---------- */
+.sheet{
+  position:fixed;inset:0;z-index:60;display:none;
+  background:rgba(6,9,18,.6);backdrop-filter:blur(3px);
+}
+.sheet.open{display:block}
+.sheet-panel{
+  position:absolute;left:0;right:0;bottom:0;max-height:88vh;display:flex;flex-direction:column;
+  background:var(--ink);border-top:1px solid var(--rule);border-radius:20px 20px 0 0;
+  padding:8px 16px calc(18px + env(safe-area-inset-bottom)) 16px;
+  animation:rise .22s ease;
+}
+@keyframes rise{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.grab{width:38px;height:4px;border-radius:4px;background:var(--rule);margin:4px auto 12px auto}
+.sheet h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper3);margin-bottom:10px}
+.search{
+  width:100%;padding:12px 14px;border-radius:12px;background:var(--ink2);border:1px solid var(--rule);
+  color:var(--paper);font:400 15px/1.2 "IBM Plex Sans",sans-serif;margin-bottom:10px;
+}
+.search::placeholder{color:var(--paper3)}
+.filters{display:flex;gap:8px;margin-bottom:10px}
+.scroller{overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;margin:0 -4px;padding:0 4px}
+.chrow{
+  display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;cursor:pointer;
+  border:1px solid transparent;
+}
+.chrow:hover{background:var(--ink2)}
+.chrow.cur{border-color:var(--brass-dim);background:var(--ink2)}
+.chrow .n{width:30px;font-family:Newsreader,serif;font-size:17px;color:var(--brass)}
+.chrow .t{flex:1;min-width:0;font-size:13.5px;color:var(--paper2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chrow .c{font-size:11px;color:var(--paper3)}
+.chrow .bar{width:52px;height:3px;border-radius:3px;background:var(--ink3);overflow:hidden;flex:none}
+.chrow .bar i{display:block;height:100%;background:var(--mint)}
+.dgrow{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 40px;border-radius:12px;cursor:pointer;font-size:13.5px;color:var(--paper2)}
+.dgrow:hover{background:var(--ink2)}
+.dgrow.cur{background:var(--ink2);color:var(--brass)}
+.dgrow .dot{width:7px;height:7px;border-radius:50%;background:var(--ink3);flex:none}
+.dgrow .dot.done{background:var(--mint)}
+.dgrow .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dgrow .st{color:var(--brass);font-size:13px}
+.res{padding:11px 12px;border-radius:12px;cursor:pointer}
+.res:hover{background:var(--ink2)}
+.res .loc{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--paper3)}
+.res .tt{font-size:14px;margin:2px 0 3px 0}
+.res .sn{font-size:12.5px;color:var(--paper3);line-height:1.5}
+.res mark{background:rgba(232,180,74,.22);color:var(--brass);border-radius:3px}
+.empty{padding:26px 6px;color:var(--paper3);font-size:13.5px;line-height:1.6}
+
+/* settings rows */
+.srow{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--rule)}
+.srow:last-of-type{border-bottom:none}
+.srow .lab{flex:1;font-size:13.5px}
+.srow .lab small{display:block;color:var(--paper3);font-size:11.5px;margin-top:2px}
+select{
+  padding:9px 10px;border-radius:10px;background:var(--ink3);color:var(--paper);
+  border:1px solid var(--rule);font:400 13px/1 "IBM Plex Sans",sans-serif;max-width:190px;
+}
+.switch{position:relative;width:44px;height:25px;flex:none}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:var(--ink3);border:1px solid var(--rule);border-radius:25px;transition:.2s;cursor:pointer}
+.slider:before{content:"";position:absolute;height:17px;width:17px;left:3px;top:3px;background:var(--paper3);border-radius:50%;transition:.2s}
+.switch input:checked+.slider{background:var(--brass);border-color:var(--brass)}
+.switch input:checked+.slider:before{transform:translateX(19px);background:#241a04}
+.ghost{padding:11px;border-radius:12px;background:transparent;border:1px solid var(--rule);color:var(--paper2);font:500 13px/1 "IBM Plex Sans",sans-serif;cursor:pointer;width:100%;margin-top:12px}
+.boot{padding:60px 10px;text-align:center;color:var(--paper3);font-size:14px;line-height:1.7}
+.kbd{display:none}
+@media(min-width:760px){.kbd{display:block;margin-top:14px;font-size:11.5px;color:var(--paper3);text-align:center}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">§</div>
+    <div class="hd">
+      <h1>Practical Law — Explainers</h1>
+      <p id="libinfo">Loading your chapters…</p>
+    </div>
+    <button class="iconbtn" id="openLib" aria-label="Browse chapters">☰</button>
+    <button class="iconbtn" id="openSet" aria-label="Settings">⚙</button>
+  </header>
+
+  <div class="overall">
+    <span id="overallTxt">—</span>
+    <div class="track"><div class="fill" id="overallFill"></div></div>
+    <span id="overallPct">0%</span>
+  </div>
+
+  <div id="stage"><div class="boot">Reading the explainer files…</div></div>
+
+  <div class="kbd">Space play · ← → move · S star · / search</div>
+</div>
+
+<div class="dock"><div class="dock-in">
+  <div class="status">
+    <span class="now" id="status">Ready when you are.</span>
+    <span class="timer" id="timerTxt"></span>
+  </div>
+  <div class="transport">
+    <button class="tbtn" id="prev" aria-label="Previous">⏮</button>
+    <button id="play">▶&nbsp; Play</button>
+    <button class="tbtn" id="next" aria-label="Next">⏭</button>
+  </div>
+  <div class="chips">
+    <button class="chip" id="chipCh">Chapter —</button>
+    <button class="chip" id="chipMode">Continue</button>
+    <button class="chip" id="chipRate">1.0×</button>
+    <button class="chip" id="chipStar">☆ Star</button>
+    <button class="chip" id="chipTimer">Sleep off</button>
+    <button class="chip" id="chipRecall">Recall off</button>
+  </div>
+</div></div>
+
+<!-- library sheet -->
+<div class="sheet" id="libSheet">
+  <div class="sheet-panel">
+    <div class="grab"></div>
+    <input class="search" id="q" placeholder="Search every chapter — try “covenant”" autocomplete="off">
+    <div class="filters">
+      <button class="chip" id="fAll">All chapters</button>
+      <button class="chip" id="fStar">☆ Starred</button>
+      <button class="chip" id="fUnheard">Not heard yet</button>
+    </div>
+    <div class="scroller" id="libList"></div>
+  </div>
+</div>
+
+<!-- settings sheet -->
+<div class="sheet" id="setSheet">
+  <div class="sheet-panel">
+    <div class="grab"></div>
+    <h2>Settings</h2>
+    <div class="scroller">
+      <div class="srow">
+        <div class="lab">Voice<small id="voiceHint">Uses the voices installed on this device</small></div>
+        <select id="voiceSel"></select>
+      </div>
+      <div class="srow">
+        <div class="lab">Speed</div>
+        <select id="rateSel">
+          <option value="0.8">0.8×</option><option value="0.9">0.9×</option>
+          <option value="1" selected>1.0×</option><option value="1.1">1.1×</option>
+          <option value="1.2">1.2×</option><option value="1.35">1.35×</option>
+          <option value="1.5">1.5×</option><option value="1.75">1.75×</option>
+        </select>
+      </div>
+      <div class="srow">
+        <div class="lab">What plays next<small>After a diagram finishes</small></div>
+        <select id="modeSel">
+          <option value="flow">Continue through chapters</option>
+          <option value="chapter">Stay in this chapter</option>
+          <option value="one">Repeat this diagram</option>
+          <option value="shuffle">Shuffle everything</option>
+          <option value="starred">Starred only</option>
+          <option value="stop">Stop after each</option>
+        </select>
+      </div>
+      <div class="srow">
+        <div class="lab">Sleep timer</div>
+        <select id="timerSel">
+          <option value="0">Off</option><option value="10">10 minutes</option>
+          <option value="20">20 minutes</option><option value="30">30 minutes</option>
+          <option value="45">45 minutes</option><option value="60">60 minutes</option>
+          <option value="chapter">End of this chapter</option>
+        </select>
+      </div>
+      <div class="srow">
+        <div class="lab">Reading size</div>
+        <select id="sizeSel">
+          <option value="15">Small</option><option value="17" selected>Medium</option>
+          <option value="19">Large</option><option value="21">Extra large</option>
+        </select>
+      </div>
+      <div class="srow">
+        <div class="lab">Recall mode<small>Hides the text so you answer from memory first</small></div>
+        <label class="switch"><input type="checkbox" id="recallTg"><span class="slider"></span></label>
+      </div>
+      <div class="srow">
+        <div class="lab">Keep playing with the screen off<small>Adds lock-screen controls on Android. iPhone still pauses when locked.</small></div>
+        <label class="switch"><input type="checkbox" id="bgTg" checked><span class="slider"></span></label>
+      </div>
+      <div class="srow">
+        <div class="lab">Keep the screen awake while playing</div>
+        <label class="switch"><input type="checkbox" id="wakeTg" checked><span class="slider"></span></label>
+      </div>
+      <button class="ghost" id="rescan">Check GitHub for new or edited chapters</button>
+      <button class="ghost" id="clearHeard">Reset my listening progress</button>
+      <div class="kbd" style="display:block;text-align:left;margin-top:14px">
+        Installed from GitHub Pages, this page works offline once each chapter has been opened.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   NPPE Reader — speaks the SEGMENTS arrays in chX_Explainer.html
+   ============================================================ */
+const MAX_CH = 40;
+const CACHE_KEY = 'nppe.lib.v2';
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+let LIB = {};                       // { ch: [ {num,title,text,ex}, ... ] }
+let chapters = [];                  // sorted chapter numbers
+let cur = { ch:null, i:0 };
+let chunks = [], ci = 0;            // spoken pieces of the current diagram
+let playing = false, paused = false, speakToken = 0;
+let sleepAt = 0, sleepChapterEnd = false, tickHandle = null, wakeLock = null, silentAudio = null;
+
+/* ---------- small storage helper (never throws) ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+let prefs  = Object.assign({ rate:1, voice:'', mode:'flow', size:17, recall:false, bg:true, wake:true, timer:'0' }, store.get('nppe.prefs', {}));
+let heard  = store.get('nppe.heard', {});    // { "4:3": timestamp }
+let starred= store.get('nppe.star', {});     // { "4:3": true }
+const key  = (ch,i) => ch + ':' + i;
+const savePrefs = () => store.set('nppe.prefs', prefs);
+
+/* ---------- parse a chapter file ---------- */
+function parseSegments(html){
+  const s = html.indexOf('const SEGMENTS = [');
+  const e = html.indexOf('let currentIndex = 0;');
+  if (s === -1 || e === -1) return [];
+  const block = html.substring(s + 17, e).trim().replace(/;\s*$/, '');
+  let arr = [];
+  try { arr = new Function('return ' + block)(); } catch(err){ return []; }
+  return arr.map(o => {
+    const title = o.title || '';
+    const m = title.match(/Diagram\s+(\d+[a-z]?)\s*[—-]\s*(.*)/);
+    return {
+      num: m ? m[1] : '?',
+      title: m ? m[2] : title,
+      text: (o.text ?? o.explanation ?? '').trim(),
+      ex:   (o.ex   ?? o.example     ?? '').trim()
+    };
+  }).filter(x => x.text);
+}
+
+/* ---------- load, with an instant start from cache ---------- */
+async function boot(){
+  const cached = store.get(CACHE_KEY, null);
+  if (cached && cached.lib && Object.keys(cached.lib).length){
+    LIB = cached.lib; chapters = Object.keys(LIB).map(Number).sort((a,b)=>a-b);
+    const last = store.get('nppe.pos', null);
+    const ch = (last && LIB[last.ch]) ? last.ch : chapters[0];
+    const i  = (last && LIB[last.ch] && last.i < LIB[last.ch].length) ? last.i : 0;
+    render(ch, i); refreshCounts();
+    scan(true);                        // quietly refresh in the background
+  } else {
+    await scan(false);
+  }
+}
+
+async function scan(quiet){
+  if (!quiet) info('Reading the explainer files…');
+  const found = {};
+  let done = 0;
+  await Promise.all(Array.from({length:MAX_CH}, (_,k) => k+1).map(n =>
+    fetch('ch' + n + '_Explainer.html', {cache:'no-cache'})
+      .then(r => r.ok ? r.text() : null)
+      .then(html => { if (html){ const segs = parseSegments(html); if (segs.length) found[n] = segs; } })
+      .catch(()=>{})
+      .finally(()=>{ done++; if (!quiet) info('Loading… ' + Object.keys(found).length + ' chapters found'); })
+  ));
+
+  if (!Object.keys(found).length){
+    if (!quiet){
+      info('No chapter files found');
+      document.getElementById('stage').innerHTML =
+        '<div class="boot">This page did not find any <b>chX_Explainer.html</b> files beside it.' +
+        '<br>Check that index.html sits in the same folder as the chapter files in your repository.</div>';
+    }
+    return;
+  }
+  LIB = found;
+  chapters = Object.keys(LIB).map(Number).sort((a,b)=>a-b);
+  store.set(CACHE_KEY, { lib: LIB, at: Date.now() });
+  if (!quiet){
+    const last = store.get('nppe.pos', null);
+    const ch = (last && LIB[last.ch]) ? last.ch : chapters[0];
+    const i  = (last && LIB[last.ch] && last.i < LIB[last.ch].length) ? last.i : 0;
+    render(ch, i);
+  } else if (cur.ch && !LIB[cur.ch]) { render(chapters[0], 0); }
+  refreshCounts();
+}
+function info(t){ document.getElementById('libinfo').textContent = t; }
+
+function totalCount(){ return chapters.reduce((t,c)=>t+LIB[c].length,0); }
+function heardCount(){ return Object.keys(heard).filter(k => { const [c,i]=k.split(':').map(Number); return LIB[c] && LIB[c][i]; }).length; }
+function refreshCounts(){
+  const tot = totalCount(), h = heardCount();
+  info(chapters.length + ' chapters · ' + tot + ' diagrams');
+  const pct = tot ? Math.round(h/tot*100) : 0;
+  document.getElementById('overallTxt').textContent = h + ' of ' + tot + ' heard';
+  document.getElementById('overallPct').textContent = pct + '%';
+  document.getElementById('overallFill').style.width = pct + '%';
+}
+
+/* ---------- sentence splitting ---------- */
+const ABBR = /(e\.g|i\.e|etc|vs|Ed|No|Mr|Mrs|Dr|St|approx|Inc|Ltd)\.$/i;
+function sentences(text){
+  const raw = text.replace(/\s+/g,' ').trim().match(/[^.!?]+[.!?]*/g) || [text];
+  const merged = [];
+  raw.forEach(p => {
+    p = p.trim(); if (!p) return;
+    const prev = merged[merged.length-1];
+    if (prev && (ABBR.test(prev) || prev.length < 30)) merged[merged.length-1] = prev + ' ' + p;
+    else merged.push(p);
+  });
+  // break very long sentences at commas so highlighting stays readable
+  const out = [];
+  merged.forEach(s => {
+    if (s.length <= 320) { out.push(s); return; }
+    let buf = '';
+    s.split(/,\s+/).forEach((part, idx, all) => {
+      const piece = part + (idx < all.length-1 ? ',' : '');
+      if ((buf + ' ' + piece).trim().length > 260 && buf) { out.push(buf.trim()); buf = piece; }
+      else buf = (buf + ' ' + piece).trim();
+    });
+    if (buf) out.push(buf.trim());
+  });
+  return out;
+}
+
+/* ---------- render a diagram ---------- */
+function esc(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function render(ch, i, keepPlaying){
+  cur = { ch, i };
+  store.set('nppe.pos', cur);
+  const s = LIB[ch][i];
+
+  chunks = [];
+  chunks.push({ say:'Chapter ' + ch + ', diagram ' + s.num + '. ' + s.title + '.', slot:'title' });
+  const body = sentences(s.text);
+  body.forEach((t,n) => chunks.push({ say:t, slot:'t'+n, show:t }));
+  let exs = [];
+  if (s.ex){
+    chunks.push({ say:'Here is an example.', slot:'exlbl' });
+    exs = sentences(s.ex);
+    exs.forEach((t,n) => chunks.push({ say:t, slot:'e'+n, show:t }));
+  }
+
+  document.getElementById('stage').innerHTML =
+    '<div class="reader">' +
+      '<div class="margin">' +
+        '<div class="marginnum">' + esc(String(s.num)) + '</div>' +
+        '<div class="marginlbl">DIA</div>' +
+        '<div class="rail"><div class="railfill" id="railfill"></div></div>' +
+      '</div>' +
+      '<div>' +
+        '<div class="eyebrow" id="eyebrow"><span>Chapter ' + ch + '</span><span>·</span><span>' + (i+1) + ' of ' + LIB[ch].length + '</span>' +
+          (heard[key(ch,i)] ? '<span class="heard">✓ heard</span>' : '') +
+          (starred[key(ch,i)] ? '<span style="color:var(--brass)">★</span>' : '') + '</div>' +
+        '<h2 class="dtitle" id="dtitle">' + esc(s.title) + '</h2>' +
+        '<div class="prose" id="prose">' +
+          body.map((t,n)=>'<s-en data-slot="t'+n+'">'+esc(t)+'</s-en> ').join('') +
+        '</div>' +
+        (s.ex ?
+          '<div class="exwrap"><div class="exlbl" id="exlbl">For example</div>' +
+          '<div class="ex" id="exbox">' + exs.map((t,n)=>'<s-en data-slot="e'+n+'">'+esc(t)+'</s-en> ').join('') + '</div></div>' : '') +
+        '<div class="revealbar"><button id="revealBtn">Tap to reveal the explanation</button></div>' +
+      '</div>' +
+    '</div>';
+
+  document.body.classList.remove('revealed');
+  const rb = document.getElementById('revealBtn');
+  if (rb) rb.onclick = () => document.body.classList.add('revealed');
+  document.querySelectorAll('#stage s-en').forEach(el => {
+    el.onclick = () => { const idx = chunks.findIndex(c => c.slot === el.dataset.slot); if (idx >= 0) startAt(idx); };
+  });
+
+  document.getElementById('chipCh').innerHTML = 'Ch <b>' + ch + '</b> · D' + s.num;
+  document.getElementById('chipStar').textContent = starred[key(ch,i)] ? '★ Starred' : '☆ Star';
+  ci = 0; paintChunk(); mediaMeta();
+  if (!keepPlaying){ stopSpeech('Ready when you are.'); }
+  window.scrollTo({ top:0, behavior: playing ? 'auto' : 'smooth' });
+}
+
+function paintChunk(){
+  document.querySelectorAll('#stage .lit').forEach(e => e.classList.remove('lit'));
+  const c = chunks[ci]; if (!c) return;
+  let el = null;
+  if (c.slot === 'exlbl') el = document.getElementById('exlbl');
+  else if (c.slot !== 'title') el = document.querySelector('#stage [data-slot="' + c.slot + '"]');
+  if (el){
+    el.classList.add('lit');
+    if (playing) el.scrollIntoView({ block:'center', behavior: 'smooth' });
+  }
+  const rf = document.getElementById('railfill');
+  if (rf) rf.style.height = Math.round((ci+1)/chunks.length*100) + '%';
+}
+
+/* ---------- speech ---------- */
+let voices = [];
+function loadVoices(){
+  voices = (speechSynthesis.getVoices() || []).filter(v => /^en/i.test(v.lang));
+  if (!voices.length) voices = speechSynthesis.getVoices() || [];
+  const sel = document.getElementById('voiceSel');
+  sel.innerHTML = voices.map(v => '<option value="' + esc(v.name) + '">' + esc(v.name.replace(/\s*\(.*?\)/,'')) + ' · ' + v.lang + '</option>').join('')
+                  || '<option value="">Device default</option>';
+  if (prefs.voice && voices.some(v => v.name === prefs.voice)) sel.value = prefs.voice;
+  else {
+    const nice = voices.find(v => /natural|premium|enhanced|samantha|google us|google uk/i.test(v.name));
+    if (nice){ prefs.voice = nice.name; sel.value = nice.name; savePrefs(); }
+  }
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+
+function speakChunk(){
+  const c = chunks[ci];
+  if (!c){ finishDiagram(); return; }
+  const u = new SpeechSynthesisUtterance(c.say);
+  u.rate = Number(prefs.rate) || 1;
+  u.pitch = 1;
+  const v = voices.find(x => x.name === prefs.voice);
+  if (v) { u.voice = v; u.lang = v.lang; }
+  const my = ++speakToken;
+  u.onend = () => {
+    if (my !== speakToken || !playing) return;
+    ci++;
+    if (ci < chunks.length){ paintChunk(); speakChunk(); }
+    else finishDiagram();
+  };
+  u.onerror = (e) => {
+    if (my !== speakToken) return;
+    if (e && e.error === 'interrupted') return;
+    stopSpeech('Speech stopped — tap Play to continue.');
+  };
+  setStatus();
+  try { speechSynthesis.speak(u); }
+  catch(err){ stopSpeech('This browser blocked speech — tap Play again.'); }
+}
+
+function startAt(idx){
+  ci = Math.max(0, Math.min(idx, chunks.length-1));
+  speechSynthesis.cancel(); speakToken++;
+  playing = true; paused = false;
+  setPlayBtn(); paintChunk(); keepAwake(true); bgAudio(true); mediaMeta();
+  setTimeout(speakChunk, isIOS ? 90 : 40);
+}
+
+function finishDiagram(){
+  markHeard(cur.ch, cur.i);
+  const m = prefs.mode;
+  if (m === 'stop'){ stopSpeech('Finished. ' + LIB[cur.ch][cur.i].title); return; }
+  if (sleepChapterEnd && nextPos().ch !== cur.ch){ stopSpeech('End of chapter — sleep timer stopped playback.'); sleepChapterEnd = false; setTimerChip(); return; }
+  const p = nextPos();
+  if (!p){ stopSpeech('Nothing left in this list.'); return; }
+  render(p.ch, p.i, true);
+  ci = 0; paintChunk();
+  setTimeout(speakChunk, isIOS ? 90 : 40);
+}
+
+function nextPos(){
+  const m = prefs.mode;
+  if (m === 'one') return { ch:cur.ch, i:cur.i };
+  if (m === 'shuffle'){
+    const c = chapters[Math.floor(Math.random()*chapters.length)];
+    return { ch:c, i:Math.floor(Math.random()*LIB[c].length) };
+  }
+  if (m === 'starred'){
+    const list = starList(); if (!list.length) return null;
+    const at = list.findIndex(p => p.ch===cur.ch && p.i===cur.i);
+    return list[(at+1) % list.length];
+  }
+  if (cur.i + 1 < LIB[cur.ch].length) return { ch:cur.ch, i:cur.i+1 };
+  if (m === 'chapter') return { ch:cur.ch, i:0 };
+  const at = chapters.indexOf(cur.ch);
+  return { ch: chapters[(at+1) % chapters.length], i:0 };
+}
+function prevPos(){
+  if (cur.i > 0) return { ch:cur.ch, i:cur.i-1 };
+  const at = chapters.indexOf(cur.ch);
+  const pc = chapters[(at-1+chapters.length) % chapters.length];
+  return { ch:pc, i:LIB[pc].length-1 };
+}
+function starList(){
+  const out = [];
+  chapters.forEach(c => LIB[c].forEach((s,i)=>{ if (starred[key(c,i)]) out.push({ch:c,i}); }));
+  return out;
+}
+
+function markHeard(ch,i){
+  if (!heard[key(ch,i)]){ heard[key(ch,i)] = Date.now(); store.set('nppe.heard', heard); refreshCounts(); paintEyebrow(); }
+}
+
+function setPlayBtn(){
+  const b = document.getElementById('play');
+  if (playing && !paused){ b.innerHTML = '❚❚&nbsp; Pause'; b.classList.add('on'); }
+  else { b.innerHTML = (paused ? '▶&nbsp; Resume' : '▶&nbsp; Play'); b.classList.remove('on'); }
+}
+function setStatus(){
+  const s = LIB[cur.ch][cur.i];
+  document.getElementById('status').textContent =
+    (playing ? 'Playing · ' : 'Ready · ') + 'Ch ' + cur.ch + ' D' + s.num + ' — ' + s.title +
+    '  (' + Math.min(ci+1, chunks.length) + '/' + chunks.length + ')';
+}
+function stopSpeech(msg){
+  speechSynthesis.cancel(); speakToken++;
+  playing = false; paused = false;
+  setPlayBtn(); keepAwake(false); bgAudio(false);
+  document.getElementById('status').textContent = msg || 'Stopped.';
+}
+
+/* Chrome cuts speech off after ~15 s; nudging it keeps long sentences alive. */
+setInterval(() => {
+  if (playing && !paused && !isIOS && speechSynthesis.speaking){
+    speechSynthesis.pause(); speechSynthesis.resume();
+  }
+}, 9000);
+
+/* ---------- transport ---------- */
+document.getElementById('play').onclick = () => {
+  if (!cur.ch) return;
+  if (playing && !paused){
+    paused = true;
+    if (isIOS) { speechSynthesis.cancel(); speakToken++; }   // iOS resume is unreliable
+    else speechSynthesis.pause();
+    setPlayBtn(); document.getElementById('status').textContent = 'Paused.'; keepAwake(false);
+    return;
+  }
+  if (paused){
+    paused = false; setPlayBtn(); keepAwake(true);
+    if (isIOS) speakChunk(); else speechSynthesis.resume();
+    return;
+  }
+  startAt(ci);
+};
+document.getElementById('next').onclick = () => step(nextPos());
+document.getElementById('prev').onclick = () => step(prevPos());
+function step(p){
+  if (!p) return;
+  const was = playing && !paused;
+  speechSynthesis.cancel(); speakToken++;
+  render(p.ch, p.i, was);
+  if (was){ playing = true; paused = false; setPlayBtn(); setTimeout(speakChunk, isIOS ? 90 : 40); }
+}
+
+/* ---------- chips ---------- */
+document.getElementById('chipCh').onclick = () => openSheet('libSheet');
+document.getElementById('chipMode').onclick = () => {
+  const order = ['flow','chapter','one','shuffle','starred','stop'];
+  prefs.mode = order[(order.indexOf(prefs.mode)+1) % order.length];
+  savePrefs(); syncControls();
+};
+document.getElementById('chipRate').onclick = () => {
+  const steps = [0.9,1,1.1,1.2,1.35,1.5,1.75];
+  const at = steps.indexOf(Number(prefs.rate));
+  prefs.rate = steps[(at+1) % steps.length]; savePrefs(); syncControls();
+  if (playing && !paused){ speechSynthesis.cancel(); speakToken++; setTimeout(speakChunk, 60); }
+};
+document.getElementById('chipStar').onclick = () => toggleStar();
+document.getElementById('chipRecall').onclick = () => { prefs.recall = !prefs.recall; savePrefs(); syncControls(); };
+document.getElementById('chipTimer').onclick = () => {
+  const order = ['0','10','20','30','chapter'];
+  prefs.timer = order[(order.indexOf(String(prefs.timer))+1) % order.length];
+  savePrefs(); applyTimer(); syncControls();
+};
+function toggleStar(){
+  const k = key(cur.ch, cur.i);
+  if (starred[k]) delete starred[k]; else starred[k] = true;
+  store.set('nppe.star', starred);
+  document.getElementById('chipStar').textContent = starred[k] ? '★ Starred' : '☆ Star';
+  paintEyebrow();
+}
+function paintEyebrow(){
+  const eb = document.getElementById('eyebrow'); if (!eb) return;
+  const k = key(cur.ch, cur.i);
+  eb.innerHTML = '<span>Chapter ' + cur.ch + '</span><span>·</span><span>' + (cur.i+1) + ' of ' + LIB[cur.ch].length + '</span>' +
+    (heard[k] ? '<span class="heard">✓ heard</span>' : '') +
+    (starred[k] ? '<span style="color:var(--brass)">★</span>' : '');
+}
+
+const MODE_LABEL = { flow:'Continue', chapter:'This chapter', one:'Repeat one', shuffle:'Shuffle', starred:'Starred only', stop:'Stop after each' };
+function syncControls(){
+  document.getElementById('chipMode').textContent = MODE_LABEL[prefs.mode];
+  document.getElementById('chipRate').textContent = Number(prefs.rate).toFixed(2).replace(/0$/,'') + '×';
+  document.getElementById('chipRecall').textContent = prefs.recall ? 'Recall on' : 'Recall off';
+  document.body.classList.toggle('recall', !!prefs.recall);
+  document.documentElement.style.setProperty('--fs', prefs.size + 'px');
+  document.getElementById('modeSel').value = prefs.mode;
+  document.getElementById('rateSel').value = String(prefs.rate);
+  document.getElementById('sizeSel').value = String(prefs.size);
+  document.getElementById('timerSel').value = String(prefs.timer);
+  document.getElementById('recallTg').checked = !!prefs.recall;
+  document.getElementById('bgTg').checked = !!prefs.bg;
+  document.getElementById('wakeTg').checked = !!prefs.wake;
+  setTimerChip();
+}
+
+/* ---------- sleep timer ---------- */
+function applyTimer(){
+  sleepAt = 0; sleepChapterEnd = false;
+  if (prefs.timer === 'chapter') sleepChapterEnd = true;
+  else if (Number(prefs.timer) > 0) sleepAt = Date.now() + Number(prefs.timer)*60000;
+  setTimerChip();
+}
+function setTimerChip(){
+  const chip = document.getElementById('chipTimer');
+  if (sleepChapterEnd){ chip.textContent = 'Sleep: chapter'; document.getElementById('timerTxt').textContent = ''; return; }
+  if (!sleepAt){ chip.textContent = 'Sleep off'; document.getElementById('timerTxt').textContent = ''; return; }
+  const left = Math.max(0, sleepAt - Date.now());
+  const mm = Math.floor(left/60000), ss = Math.floor(left%60000/1000);
+  chip.textContent = 'Sleep ' + mm + 'm';
+  document.getElementById('timerTxt').textContent = mm + ':' + String(ss).padStart(2,'0');
+}
+setInterval(() => {
+  if (sleepAt){
+    if (Date.now() >= sleepAt){ sleepAt = 0; prefs.timer='0'; savePrefs(); stopSpeech('Sleep timer ended playback.'); }
+    setTimerChip();
+  }
+}, 1000);
+
+/* ---------- screen + background audio ---------- */
+async function keepAwake(on){
+  if (!prefs.wake || !('wakeLock' in navigator)) return;
+  try{
+    if (on && !wakeLock) wakeLock = await navigator.wakeLock.request('screen');
+    else if (!on && wakeLock){ await wakeLock.release(); wakeLock = null; }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && playing) keepAwake(true);
+});
+function silentWavURL(){
+  const sr = 8000, secs = 1, n = sr*secs, buf = new ArrayBuffer(44 + n*2), d = new DataView(buf);
+  const wr = (o,s) => { for (let k=0;k<s.length;k++) d.setUint8(o+k, s.charCodeAt(k)); };
+  wr(0,'RIFF'); d.setUint32(4, 36+n*2, true); wr(8,'WAVEfmt ');
+  d.setUint32(16,16,true); d.setUint16(20,1,true); d.setUint16(22,1,true);
+  d.setUint32(24,sr,true); d.setUint32(28,sr*2,true); d.setUint16(32,2,true); d.setUint16(34,16,true);
+  wr(36,'data'); d.setUint32(40, n*2, true);
+  return URL.createObjectURL(new Blob([buf], {type:'audio/wav'}));
+}
+function bgAudio(on){
+  if (!prefs.bg) return;
+  try{
+    if (on){
+      if (!silentAudio){ silentAudio = new Audio(silentWavURL()); silentAudio.loop = true; silentAudio.volume = 0.001; }
+      silentAudio.play().catch(()=>{});
+    } else if (silentAudio) silentAudio.pause();
+  }catch(e){}
+}
+function mediaMeta(){
+  if (!('mediaSession' in navigator) || !cur.ch) return;
+  const s = LIB[cur.ch][cur.i];
+  try{
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: 'D' + s.num + ' — ' + s.title,
+      artist: 'Chapter ' + cur.ch + ' · NPPE Explainers',
+      album: 'Practical Law of Architecture, Engineering and Geoscience'
+    });
+    navigator.mediaSession.setActionHandler('play',  () => document.getElementById('play').click());
+    navigator.mediaSession.setActionHandler('pause', () => document.getElementById('play').click());
+    navigator.mediaSession.setActionHandler('nexttrack', () => step(nextPos()));
+    navigator.mediaSession.setActionHandler('previoustrack', () => step(prevPos()));
+  }catch(e){}
+}
+
+/* ---------- sheets ---------- */
+function openSheet(id){
+  document.getElementById(id).classList.add('open');
+  if (id === 'libSheet') drawLibrary();
+}
+function closeSheets(){ document.querySelectorAll('.sheet').forEach(s => s.classList.remove('open')); }
+document.querySelectorAll('.sheet').forEach(sh => sh.addEventListener('click', e => { if (e.target === sh) closeSheets(); }));
+document.getElementById('openLib').onclick = () => openSheet('libSheet');
+document.getElementById('openSet').onclick = () => openSheet('setSheet');
+
+let filter = 'all', openChapters = {};
+document.getElementById('fAll').onclick     = () => { filter='all'; drawLibrary(); };
+document.getElementById('fStar').onclick    = () => { filter='star'; drawLibrary(); };
+document.getElementById('fUnheard').onclick = () => { filter='new'; drawLibrary(); };
+document.getElementById('q').oninput = () => drawLibrary();
+
+function drawLibrary(){
+  const box = document.getElementById('libList');
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  ['fAll','fStar','fUnheard'].forEach((id,n) => document.getElementById(id).classList.toggle('active', ['all','star','new'][n] === filter));
+
+  if (q){
+    const hits = [];
+    chapters.forEach(c => LIB[c].forEach((s,i) => {
+      const hay = (s.title + ' ' + s.text + ' ' + s.ex).toLowerCase();
+      const at = hay.indexOf(q);
+      if (at >= 0) hits.push({ c, i, s, at, hay });
+    }));
+    if (!hits.length){ box.innerHTML = '<div class="empty">Nothing matches “' + esc(q) + '”. Try a shorter word.</div>'; return; }
+    box.innerHTML = hits.slice(0,60).map(h => {
+      const src = (h.s.title + ' ' + h.s.text + ' ' + h.s.ex);
+      const from = Math.max(0, h.at - 60);
+      const snip = esc(src.substr(from, 170)).replace(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')','ig'), '<mark>$1</mark>');
+      return '<div class="res" data-c="' + h.c + '" data-i="' + h.i + '">' +
+             '<div class="loc">Ch ' + h.c + ' · Diagram ' + h.s.num + (heard[key(h.c,h.i)] ? ' · heard' : '') + '</div>' +
+             '<div class="tt">' + esc(h.s.title) + '</div><div class="sn">…' + snip + '…</div></div>';
+    }).join('');
+    box.querySelectorAll('.res').forEach(el => el.onclick = () => jump(+el.dataset.c, +el.dataset.i));
+    return;
+  }
+
+  let html = '';
+  chapters.forEach(c => {
+    const list = LIB[c];
+    const done = list.filter((s,i) => heard[key(c,i)]).length;
+    const stars = list.filter((s,i) => starred[key(c,i)]).length;
+    if (filter === 'star' && !stars) return;
+    if (filter === 'new' && done === list.length) return;
+    const open = openChapters[c] || c === cur.ch;
+    html += '<div class="chrow' + (c===cur.ch?' cur':'') + '" data-ch="' + c + '">' +
+              '<div class="n">' + c + '</div>' +
+              '<div class="t">Chapter ' + c + (stars ? ' · ★' + stars : '') + '</div>' +
+              '<div class="bar"><i style="width:' + Math.round(done/list.length*100) + '%"></i></div>' +
+              '<div class="c">' + done + '/' + list.length + '</div></div>';
+    if (open){
+      list.forEach((s,i) => {
+        if (filter === 'star' && !starred[key(c,i)]) return;
+        if (filter === 'new' && heard[key(c,i)]) return;
+        html += '<div class="dgrow' + (c===cur.ch && i===cur.i ? ' cur' : '') + '" data-c="' + c + '" data-i="' + i + '">' +
+                '<span class="dot' + (heard[key(c,i)] ? ' done' : '') + '"></span>' +
+                '<span class="txt">D' + s.num + ' — ' + esc(s.title) + '</span>' +
+                (starred[key(c,i)] ? '<span class="st">★</span>' : '') + '</div>';
+      });
+    }
+  });
+  box.innerHTML = html || '<div class="empty">Nothing here yet. Star a few diagrams you keep forgetting and they will show up in this list.</div>';
+  box.querySelectorAll('.chrow').forEach(el => el.onclick = () => {
+    const c = +el.dataset.ch; openChapters[c] = !(openChapters[c] || c === cur.ch); drawLibrary();
+  });
+  box.querySelectorAll('.dgrow').forEach(el => el.onclick = () => jump(+el.dataset.c, +el.dataset.i));
+}
+function jump(c,i){
+  closeSheets();
+  const was = playing && !paused;
+  speechSynthesis.cancel(); speakToken++;
+  render(c, i, was);
+  if (was){ playing = true; paused = false; setPlayBtn(); setTimeout(speakChunk, isIOS ? 90 : 40); }
+}
+
+/* ---------- settings wiring ---------- */
+document.getElementById('voiceSel').onchange = e => { prefs.voice = e.target.value; savePrefs(); if (playing && !paused){ speechSynthesis.cancel(); speakToken++; setTimeout(speakChunk,60); } };
+document.getElementById('rateSel').onchange  = e => { prefs.rate = Number(e.target.value); savePrefs(); syncControls(); if (playing && !paused){ speechSynthesis.cancel(); speakToken++; setTimeout(speakChunk,60); } };
+document.getElementById('modeSel').onchange  = e => { prefs.mode = e.target.value; savePrefs(); syncControls(); };
+document.getElementById('sizeSel').onchange  = e => { prefs.size = Number(e.target.value); savePrefs(); syncControls(); };
+document.getElementById('timerSel').onchange = e => { prefs.timer = e.target.value; savePrefs(); applyTimer(); };
+document.getElementById('recallTg').onchange = e => { prefs.recall = e.target.checked; savePrefs(); syncControls(); };
+document.getElementById('bgTg').onchange     = e => { prefs.bg = e.target.checked; savePrefs(); if(!prefs.bg) bgAudio(false); };
+document.getElementById('wakeTg').onchange   = e => { prefs.wake = e.target.checked; savePrefs(); keepAwake(playing); };
+document.getElementById('rescan').onclick    = () => { closeSheets(); info('Checking for updates…'); scan(false); };
+document.getElementById('clearHeard').onclick= () => {
+  if (!confirm('Clear the ✓ marks on every diagram? Starred items stay.')) return;
+  heard = {}; store.set('nppe.heard', heard); refreshCounts(); render(cur.ch, cur.i, playing);
+};
+
+/* ---------- gestures + keyboard ---------- */
+let tx = 0, ty = 0;
+document.addEventListener('touchstart', e => { tx = e.changedTouches[0].clientX; ty = e.changedTouches[0].clientY; }, {passive:true});
+document.addEventListener('touchend', e => {
+  if (document.querySelector('.sheet.open')) return;
+  const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+  if (Math.abs(dx) > 70 && Math.abs(dy) < 45){ dx < 0 ? step(nextPos()) : step(prevPos()); }
+}, {passive:true});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT'){ if (e.key === 'Escape') e.target.blur(); return; }
+  if (e.key === ' '){ e.preventDefault(); document.getElementById('play').click(); }
+  else if (e.key === 'ArrowRight') step(nextPos());
+  else if (e.key === 'ArrowLeft') step(prevPos());
+  else if (e.key.toLowerCase() === 's') toggleStar();
+  else if (e.key === '/'){ e.preventDefault(); openSheet('libSheet'); document.getElementById('q').focus(); }
+  else if (e.key === 'Escape') closeSheets();
+});
+window.addEventListener('beforeunload', () => speechSynthesis.cancel());
+
+/* ---------- go ---------- */
+syncControls(); applyTimer(); boot();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
