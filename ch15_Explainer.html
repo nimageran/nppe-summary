@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 15 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 15 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Risk Assessment Mindset Shift</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 8</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Risk Assessment Mindset Shift",
+    text: "When engineers start a new project, they are usually excited and focused on making the project succeed. However, before signing a contract (a legal agreement between two or more parties), engineers need to change their way of thinking. Instead of only thinking, \"How can we make this project work?\", they should also think, \"What could go wrong?\" This is called a risk assessment (carefully looking for possible problems before they happen). Engineers should identify possible risks such as delays (the project taking longer than planned), failed methods (a planned approach not working), or defaults (when someone does not do what they promised in the contract). But identifying risks is only the first step. The next step is risk allocation (deciding who will be responsible if a problem happens). The risk can be moved to another party, such as an insurance company (a company that provides financial protection if something bad happens) or a bonding company (a company that promises to pay or complete work if a contractor fails). This is called transferring the risk (moving responsibility to someone else). Another option is to share the risk between the people or companies involved in the contract. This is called mutual risk allocation (both sides agree on who handles different problems). In simple words: before signing a contract, do not only think about success—think about possible problems and decide in advance who will handle them.",
+    ex: "You are designing a bridge over a river known to flood. Instead of just hoping it does not flood, you assume it will. You allocate the risk by requiring the contractor to buy specific flood insurance before construction begins, passing the risk to a third-party insurer."
+  },
+  {
+    title: "Diagram 2 — The Common Law Presumption Shield",
+    text: "When a contract is unclear, courts try to figure out what the people involved probably meant. For professionals, courts usually assume they promised to provide good skill and careful work, not a perfect outcome. This means a professional is normally judged by how well they worked, not only by the final result. But if they promise a specific result, they can be blamed if that result does not happen. A clear promise like “this will never fail” creates a stronger responsibility than “I will do my work properly. Example: ”A software developer is hired to create an app. If they promise to use professional coding practices, they are responsible for working carefully and competently. They are usually not responsible if the app has unexpected problems despite proper work. However, if they say, “This app will never crash,” they have made a guarantee. If the app crashes, they may be held responsible because they promised a specific result. If a contract (a legal agreement between two or more people or companies) does not clearly explain something, the court does not simply make a random decision. Instead, the court uses certain presumptions (reasonable assumptions the law makes unless there is evidence showing the opposite). These assumptions are like a protective shield for professionals (people with special knowledge, skills, or training, such as engineers, doctors, or consultants). The court assumes that professionals and their clients are sophisticated parties (people who understand business decisions and are capable of protecting their own interests). Because of this, the court usually assumes that you negotiated fairly, that you considered and accepted the risks you knew about, and that you only promised to provide a normal level of skill and care—not a perfect result. However, this protection disappears if you explicitly guarantee (clearly promise) a perfect result. For example, saying, \"I guarantee this machine will never fail,\" creates a much stronger promise than saying, \"I will design it using reasonable engineering standards.\" Once you guarantee a specific outcome, you can be held responsible if that outcome does not happen—even if the guarantee was only written in an email and not included in the formal contract. The simple rule is: professionals are usually judged by their level of skill and care, but if they promise a perfect result, they are judged by whether that perfect result actually happens.",
+    ex: "You tell a client, 'I guarantee this new HVAC design will cut your energy bill by exactly 40 percent.' If it only cuts it by 30 percent, the protective shield is gone. You can be sued for the difference because you guaranteed a result, even if your engineering work was perfectly competent."
+  },
+  {
+    title: "Diagram 3 — The Risk-Shifting Documentation Pattern",
+    text: "Imagine you are an engineer working for a client (the client is the person or company who hires you and pays you to provide a service). You suggest a safer option (a choice that reduces the chance of problems or failure), but it costs more money. The client says, \"No, I want the cheaper option because I want to save money.\" You cannot simply choose the cheaper option without saying anything. If you secretly install the cheaper option and it later fails, you may face liability (being legally responsible for damage, loss, or problems caused by your actions). The client may say, \"You knew this option was riskier, but you did not warn me.\" However, you also cannot secretly install the more expensive option. Even though it may be safer, the client could complain that you spent more money than they approved and may take legal action against you. The correct approach is to clearly communicate with the client. You should write a message or document explaining both choices: the safer and more expensive option, and the cheaper but riskier option. Then, the client should make the final decision in writing (a written record such as an email or signed document). This creates proof that the client understood the risks and costs and chose the option themselves. By doing this, you reduce your own legal risk because you showed that you warned the client and followed a proper professional process.",
+    ex: "A client refuses to pay for corrosion-resistant steel. You send an email warning them the cheap steel will rust in five years, and they reply, 'Understood, use the cheap steel anyway to save money.' If it rusts in five years, they cannot blame you because they made an informed decision."
+  },
+  {
+    title: "Diagram 4 — Client Dissatisfaction: Justified vs Perceived",
+    text: "Client complaints fall into two buckets: justified and perceived. You cannot talk your way out of justified bad work. But perceived dissatisfaction is usually just poor communication. If you explain a scary-looking physical process to a client before it happens, you look like a trusted expert. If you wait to explain it until after they are already angry, it sounds like a self-serving excuse, even if you are telling the truth. When clients (the people or companies that hire you and pay for your professional services) complain, their complaints usually fall into two categories (groups). The first is a justified complaint (the client is right because you actually made a mistake or did poor-quality work). In this case, no amount of talking or explaining can change the fact that the work was not done properly. The second is perceived dissatisfaction (the client believes something is wrong, even though your work was actually correct). This often happens because of poor communication (you did not explain things clearly or at the right time). For example, suppose a normal part of a construction project or engineering job looks dangerous or surprising. If you explain this before it happens, the client understands what to expect and sees you as a knowledgeable professional (someone who knows what they are doing and can be trusted). But if you wait until after the client has already become upset, your explanation may sound like a self-serving excuse (an explanation that mainly sounds like you are trying to protect yourself or avoid blame), even if everything you are saying is completely true. Example: Imagine you are an engineer designing a building, and during construction the client notices large cracks in the concrete before finishing work. A poor explanation after the client complains: “Those cracks are normal. There is nothing to worry about. This happens in every project.” The client may feel ignored and think you are only defending yourself. A better explanation before the client notices: “During this stage, you may see some temporary cracks in certain areas as the concrete settles and dries. This is expected and does not mean the structure is unsafe. Our team will monitor these areas and repair the surface as part of the finishing process. I wanted to explain this now so you know what to expect and can ask any questions.” The second explanation builds trust because the client understands the situation before becoming concerned.",
+    ex: "A freshly poured concrete floor will look warped before it finishes settling. If you warn the client about this camber on Monday, they will not panic on Tuesday. If you say nothing, and they complain on Tuesday, your perfectly scientific explanation will just sound like you are covering up a mistake."
+  },
+  {
+    title: "Diagram 5 — The Unpaid-Fee Counterclaim Spiral",
+    text: "A tiny unpaid final invoice can quickly spiral into a massive financial disaster. You ask for your final fee, the client refuses, so you sue them for the fee. To defend themselves, the client files a massive counterclaim alleging you made negligent errors that cost them a fortune. This spiral almost always happens because the original retainer never clearly defined the scope of work. The fix is absolute clarity at the very beginning of the project. A small problem with payment can sometimes become a much bigger legal problem. For example, imagine you finish a project and send the client your final bill (final invoice = the last payment request you send to a client). The client refuses to pay, so you take legal action (sue = ask a court to force someone to follow their legal responsibility). The client then responds by making a counterclaim (a claim made by the person being sued, where they say the other side actually caused them harm). They might say, \"The professional made mistakes, and those mistakes caused us to lose a lot of money.\" This can turn a simple unpaid bill into a very expensive legal fight. This situation often happens because the retainer agreement (a written agreement between a professional and a client that explains what work will be done, how much it will cost, and each side's responsibilities) was not clear enough at the beginning. The agreement may not have explained the scope of work (the exact tasks, services, and limits of what the professional agreed to do). The best way to avoid this problem is to clearly define everything before starting the project: what work will be done, what will not be done, what the client should expect, and who is responsible for what. Clear expectations at the start can prevent major conflicts later. A consultant completes a project and the client still owes $1,000. The consultant says: “Please pay the remaining $1,000.” The client says: “No, because your mistakes cost our company $200,000.” The consultant sues to get the $1,000. The client files a counterclaim for $200,000. If the court agrees with the client, the consultant could owe the client money. However, it does not mean the client automatically gets $200,000. The client would need to prove that the consultant actually made mistakes, that those mistakes caused the losses, and that the amount claimed is reasonable. The point of the original passage is that a small unpaid bill can expose a professional to a much bigger dispute if the contract was unclear.",
+    ex: "You sue a client for an unpaid $5,000 final invoice. The client gets angry, hires a lawyer, and counterclaims you for $500,000, claiming your 'supervision' was negligent. If your contract had clearly stated you were only doing 'periodic reviews,' not full-time site supervision, this entire spiral could have been prevented."
+  },
+  {
+    title: "Diagram 6 — The Disclaimer Enforceability Test",
+    text: "A disclaimer (a statement saying someone will not be responsible for certain problems) is not a magic way to avoid all responsibility. For example, a company cannot simply write \"we are not liable\" (we are not legally responsible) and automatically be protected. For a judge to accept this disclaimer, it must pass two important tests. First, the disclaimer must be clearly shown to the other person (the person must have a fair chance to see and understand it before agreeing to the contract). A company cannot hide it in tiny letters or mention it after the agreement is already made. Second, the words in the disclaimer must be reasonable (fair and acceptable in the situation). A company cannot write something extremely broad like \"we are never responsible for anything, even if we seriously harm someone because of our careless actions.\" If the disclaimer tries to protect someone from gross negligence (very serious carelessness) or reckless behavior (acting without caring about the possible danger), a judge can refuse to accept it and treat it as invalid (not legally effective), even if the other person signed the contract. Simple example: Imagine you hire a company to repair your car. Before signing, the company shows you a clear contract saying: \"We are not responsible for small scratches that may happen during normal repair work.\" A judge may accept this because it is clear and reasonable. But imagine the contract says: \"We are not responsible if our mechanic damages your engine because they ignored all safety rules.\" A judge may reject this because the company is trying to escape responsibility for serious mistakes. A signature alone does not make an unfair disclaimer automatically valid.",
+    ex: "You put a disclaimer on your engineering report saying, 'We are not responsible for any errors, including if our engineer shows up drunk and guesses the math.' The court will completely ignore this disclaimer because it attempts to excuse gross negligence, leaving you fully exposed."
+  },
+  {
+    title: "Diagram 7 — Document Authentication: Two Tracks",
+    text: "Paper documents and electronic documents are authenticated differently in court. Paper documents rely on old case law, usually requiring a human witness to swear they created it. Electronic documents, however, are governed by specific Evidence Acts. Because digital files can be easily hacked, altered, or deleted, you do not just need a witness; you must prove the entire computer system that created and stored the file is secure and has genuine integrity. Paper documents and electronic documents are treated differently in court. A paper document (such as a signed paper contract) is usually proven to be real by having a witness (a person who saw something happen or knows how the document was created) say, \"Yes, I created this document\" or \"Yes, I saw this document being created.\" This approach comes from old case law (rules that developed from decisions made by courts in earlier cases). Electronic documents (such as emails, computer files, or digital records), however, are usually governed by specific Evidence Acts (laws that explain what information a court can accept as proof). Because a digital file can be easily hacked (accessed or changed by someone without permission), altered (changed), or deleted (removed), simply having a person say, \"I created this file,\" may not be enough. You may also need to prove that the computer system (the computers, software, and procedures used to create and store the file) was secure and had integrity (the file and the system were reliable and were not improperly changed).",
+    ex: "To submit a paper logbook in court, the site manager just swears they wrote it. But to submit an automated digital sensor log, you must prove your server network requires strong passwords, cannot be easily tampered with, and accurately records timestamps without interference."
+  },
+  {
+    title: "Diagram 8 — The Digital Photo Chain of Custody",
+    text: "Taking photos for legal evidence requires a strict eight-step chain of custody. A single weak link destroys the evidence. You must check equipment, choose the right quality, and use a dedicated computer with no editing software. Most importantly, you must never delete a photo, even a blurry one, and back everything up to a non-editable format like a CD. If you delete anything, the court will suspect you are hiding evidence. When taking photos for legal evidence (photos used in court to help prove what happened), you must carefully protect the photos from the moment they are taken until they are shown in court. This process is called chain of custody (the record of who handled the evidence, when they handled it, and how it was kept safe). Think of it like protecting a valuable item—if someone changes it, loses it, or damages it, people may no longer trust it. There are eight important steps to follow to maintain this chain of custody. Every step matters because one mistake can make the evidence questionable. You need to check that your camera or equipment is working properly, choose the correct photo quality, and store the photos using a dedicated computer (a computer used only for handling this evidence) without editing software (programs that can change or modify photos). The most important rule is: never delete any photo. Even if a photo is blurry, unclear, or seems useless, you should keep it. Deleting a photo can make people think you removed something because you did not want others to see it. The court may become suspicious and wonder, \"Was something hidden?\" You should also create a backup (an extra copy kept safely in case the original is lost) and save it in a format that cannot easily be changed, such as a CD (a type of storage disk). The purpose of all these rules is to prove that the photo is original, unchanged, and trustworthy. In simple words: protect the photo from being questioned, because evidence is only useful if people can trust that it was not changed.",
+    ex: "You take 50 photos of a collapsed trench. 5 are blurry, so you delete them on your camera. Three years later in court, the opposing lawyer discovers the missing file numbers and accuses you of deleting the photos that proved it was your fault. The judge agrees, and your entire photo collection is thrown out as suspicious."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

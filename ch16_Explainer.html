@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 16 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 16 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — Operating Without Insurance</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 9</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — Operating Without Insurance: The Judgment-Proofing Trap",
+    text: "Not having insurance (insurance is a plan where you pay a company to help cover the cost if something goes wrong) and trying to become judgment-proof (judgment-proof means trying to make yourself look like you have no money or valuable property so that, if you lose a lawsuit, the other person cannot collect money from you) may seem like smart ways to avoid financial risk, but they usually do not work. Even a frivolous claim (a lawsuit with little or no legal basis that is unlikely to succeed) can cost a lot of money to defend because you may still need to hire a lawyer and go through the legal process. A single large claim can even force someone into bankruptcy (a legal process that happens when a person or business cannot pay their debts). If you try to transfer your money or property (assets are things you own that have value, such as money, a house, or a car) to your spouse after you learn that a lawsuit is likely, a court can cancel that transfer because it is considered a fraudulent transfer (moving assets to someone else to prevent them from being taken to pay a legal judgment). If you start a corporation (a company that is legally separate from its owners) to hide your assets, that may not protect you. A court may pierce the corporate veil (ignore the legal separation between you and the company because the company was misused), or you can still be sued personally (as an individual, not just through the company) if your own negligence (carelessness or failure to act with reasonable care) caused someone harm, even if you were acting as an employee or company officer.",
+    ex: "An engineer transferring their house to their husband after a bridge they designed collapses is fraud; doing it years before any project fails is normal planning[cite: 6]."
+  },
+  {
+    title: "Diagram 2 — Duty to Defend vs Duty to Indemnify",
+    text: "The duty to defend and the duty to indemnify are two different responsibilities that an insurer (an insurance company that promises to protect someone financially) may have. The duty to defend means the insurance company must help protect the insured (the person or company that bought the insurance) when someone makes a claim (a legal complaint or demand saying that the insured caused harm or owes money). This duty starts based on the allegations (the things the other person says happened), not based on whether those things are later proven true. For example, imagine someone sues you and says, \"You damaged my property.\" If your insurance policy might cover this type of damage, the insurance company must pay for your lawyer and handle your defense, even before anyone knows who is actually right. The duty to indemnify is different. It means the insurance company must actually pay for the loss (the money you legally owe because of the damage or harm) if you are found responsible for something that your insurance policy covers. The important difference is: the duty to defend starts when someone makes a claim that could possibly be covered, but the duty to indemnify only happens after the final decision shows that you are responsible for something covered by the insurance policy. This means an insurance company may have to spend a lot of money defending you, even if later it is discovered that you were not responsible or that the final problem was not covered by the policy. The reason is that defending you is a separate responsibility from paying for the final loss.",
+    ex: "Someone sues you claiming a negligent design error. The insurance company pays your lawyer to fight it in court, fulfilling the duty to defend[cite: 6]. If you win, they don't have to pay the plaintiff, meaning no duty to indemnify, but paying your lawyer saved you from massive legal fees[cite: 6]."
+  },
+  {
+    title: "Diagram 3 — The Subrogation Step-Into-Shoes Flow",
+    text: "Subrogation (a legal right that allows one person or company to take another person's place and use their rights) happens when an insurer (an insurance company that pays money when something goes wrong) pays money for a loss and then tries to get that money back from the person who actually caused the problem. Imagine your car is damaged because another driver was careless. Your insurance company pays you $10,000 to repair your car. After paying you, the insurance company can step into your shoes (take your legal position and use your rights) and sue the careless driver to recover the $10,000 they paid. The insurance company is basically saying: \"We paid the cost, but this other person caused the damage, so they should pay us back.\" However, there are situations where the insurance company cannot use subrogation. One situation is when the contract contains a waiver of subrogation clause (a written agreement saying the insurance company gives up its right to recover money from another party). For example, two companies may agree that if an accident happens, the insurer will not sue either company afterward. Another limitation is that an insurance company usually cannot use subrogation to sue someone who is also insured under the same policy (a person or company that has protection from the same insurance contract). The reason is simple: the insurer already promised to protect that person. It would be strange for the insurance company to pay a claim and then turn around and sue another person it also agreed to protect. The Commonwealth v. Imperial Oil case shows this idea: an insurer cannot use subrogation against another party who is covered by the same insurance policy. Simple memory trick: Insurance pays → insurer takes your place → insurer can chase the person responsible. But: No chasing if the contract says \"we give up this right.\" (waiver of subrogation) No chasing if the person responsible is also protected by the same insurance. (same policy protection)",
+    ex: "If your insurer pays a massive claim because a specification writer you hired messed up, the insurer becomes you and sues that writer to get the money back, unless you all share the exact same project insurance policy[cite: 6]."
+  },
+  {
+    title: "Diagram 4 — Insurable Interest: Why a Subcontractor Insures the Whole Project",
+    text: "A subcontractor (a worker or company hired by another contractor to complete a specific part of a bigger project, such as electrical work, plumbing, or concrete work) can have an insurable interest (a legal reason to have insurance protection because they could suffer a loss if something goes wrong) in the entire project (the whole building or construction work), not only the small part they personally worked on. Some people think a subcontractor should only care about their own work. For example, an electrician may think, \"I only installed the wiring, so my insurance should only cover the wiring.\" However, courts do not agree with this narrow idea. The reason is that construction work is connected. A mistake by one worker can damage another worker's work or even damage the whole building. For example, a plumber's mistake could cause water damage that ruins the floors, walls, and electrical systems installed by other workers. Because every worker on a construction site could possibly cause damage beyond their own work, they have an interest in protecting the whole project. The purpose of this rule is to avoid many different workers suing each other after an accident. Instead of electricians, plumbers, and builders fighting in court and blaming each other, everyone can rely on one common insurance policy (one shared insurance plan that protects the project). Simple example: Imagine building a house: The electrician installs wires. The plumber installs pipes. The carpenter builds the walls. A pipe leak damages the walls and electrical system. The plumber did not build the walls or install the wires, but their mistake affected the whole house. So the law says: \"The plumber has a connection to the entire house because their work could affect the entire house.\" That is why the plumber has an insurable interest in the whole project, not just the pipes.",
+    ex: "A plumber installing cheap pipes in a skyscraper accidentally starts a fire that burns the whole tower down. They have an insurable interest in the whole building because their mistake could foreseeably destroy it all[cite: 6]."
+  },
+  {
+    title: "Diagram 5 — Claims-Made vs Occurrence: The Timing Puzzle",
+    text: "The claims-made test (a rule used in professional liability insurance to decide which insurance policy must pay for a claim) asks one simple question: Which insurance policy was active when the claim (the legal demand or lawsuit asking for money because someone says they were harmed) was made? It does not ask when the engineer actually did the work. For example, imagine an engineer designed a bridge in 2020, but someone did not sue the engineer until 2026. Even if the engineer had insurance in 2020 when the work was done, that old policy will usually not cover the claim if it is no longer active when the lawsuit is filed. Instead, the current policy (the insurance policy that is active when the claim is made) is the one that normally provides coverage. In short, under the claims-made test, the date of the claim matters—not the date the work was done.",
+    ex: "You designed a faulty roof in 2015 under Policy A, but switch to Policy B in 2020. If the roof collapses and you get sued in 2022, Policy B pays because that is the active claims-made policy on the day the lawsuit lands on your desk[cite: 6]."
+  },
+  {
+    title: "Diagram 6 — The Notice Trap When Changing Insurers",
+    text: "Insurance does not always protect you only based on when a mistake happened. It often depends on when the problem is reported to the insurance company. For example, imagine you are an engineer and you make a design mistake in 2025, but nobody discovers the mistake until 2027. If you report the problem in 2027, your insurance may only help you if you still have the right insurance coverage at that time. This is why you need to be careful when changing jobs (leaving one employer and starting with another), changing insurers (moving from one insurance company to another), or retiring (stopping work permanently). Before your old insurance protection ends, you need to make sure any possible problems from the past are already reported or that your new insurance will still cover them. Otherwise, there could be a gap where nobody is responsible for protecting you. Example: Imagine you are an engineer working for Company A. Your company provides professional liability insurance (insurance that protects you if someone claims your professional work caused damage or loss). During your time at Company A, you make a design mistake, but nobody notices it until two years later, after you leave and start working for Company B. Your old insurance from Company A has already ended, and your new insurance from Company B only covers work done after you joined them. Now there is a problem: Company A's insurance may say, \"You are no longer our employee,\" and Company B's insurance may say, \"This happened before you worked here.\" You could be left without protection. The main lesson is: when you leave a job, change insurance, or retire, always check whether old problems are still covered before your previous insurance ends. Make sure there is no period where you are left without protection. Changing jobs, changing insurance companies, or retiring can create a coverage gap (a period of time when you think you are protected by insurance, but actually you are not). This can be dangerous because your old insurer (the insurance company that protected you before) usually will not cover a problem if you report it after your insurance policy has ended or after you have moved to a new insurer. To avoid this problem, you must tell the correct insurer about any known potential claims (possible problems or legal complaints that you already know might happen in the future) before your old insurance ends or changes. If you are retiring, you need to buy tail coverage (extra insurance that protects you after you stop working, but only for problems related to work you did in the past). This allows you to stay protected even though you no longer have an active insurance policy for your job. A simple example: Imagine you are a doctor, engineer, or other professional, and you worked for 10 years. After retiring, a client from 5 years ago says your work caused them a problem and they want to make a legal claim. Your normal insurance may no longer exist because you retired. Tail coverage is like buying a \"backup protection period\" so your old work is still covered. (I AM NOT SURE ABOUT THIS 3 APPROACHES MENTIONED IN THE FOLLOWING PARAGRAPH BUT THESE THREE MIGHT BE CORRECT AS AN AI SUGGESTED THEM!)To avoid this problem, before leaving Company A, you should: Report any possible problems you know about (for example, a client complained about your design or there is a possible mistake that could become a claim later), or Ask for continued protection (such as extended coverage, which means the old insurance still protects you for problems related to your previous work), or Confirm that your new insurance covers past work (meaning the new insurance company agrees to protect you for work you completed before joining them). The key idea for NPPE: Insurance usually protects you based on when a claim is reported, not only when the mistake happened. Therefore, when changing jobs, changing insurers, or retiring, you must make sure old possible problems are reported or covered before your protection disappears.",
+    ex: "You are retiring. If you just cancel your insurance, you are unprotected if a client from five years ago suddenly sues you. You must buy tail coverage so the insurance company keeps protecting your past work while you sit on the beach[cite: 6]."
+  },
+  {
+    title: "Diagram 7 — Material Non-Disclosure: Even Unrelated Facts Can Void Coverage",
+    text: "When someone buys insurance (a contract where a person or company pays money to an insurance company, called a premium, and the insurer agrees to pay for certain losses or damages), they must provide important information about the risk they are asking the insurer to cover. This important information is called a material fact (a fact that could change the insurer's decision, such as whether they accept the risk or how much they charge). If the person does not share a material fact, this is called non-disclosure (not telling the insurer important information that they should know). For example, imagine a company buys insurance but does not tell the insurer that one of its employees was previously involved in a negligence claim (a legal claim saying someone failed to act carefully and caused harm or damage). Later, the company makes a completely different claim (after some time, the company asks the insurance company to pay for a new problem), For example, the company is now asking for money because its building was damaged. The insurer may still refuse to pay the new claim because the company did not provide a complete picture of the risk when buying the insurance. The important point is that the new claim does not have to be related to the hidden information. The insurer does not need to prove, \"The old negligence problem caused this new damage.\" Instead, the insurer only needs to show that if they had known the missing information, they might have charged a higher premium (the money paid for insurance) or might have refused to provide insurance at all. The question is not \"Was the hidden fact connected to the new claim?\" The question is \"Would this information have changed the insurer's decision when they agreed to provide coverage?\".",
+    ex: "You hide the fact that your firm was sued twice last year to get cheaper insurance. A year later, a brand new employee makes a completely unrelated mistake. The insurer can refuse to pay because your initial lie robbed them of the chance to charge you the correct, higher premium[cite: 6]."
+  },
+  {
+    title: "Diagram 8 — Insurer-Insured Conflict: When You Need Your Own Lawyer",
+    text: "Insurer and insured interests usually align, but conflict arises if the insurer denies coverage, the claim exceeds policy limits, or the insured wants to fight a settlement. In these cases, the insured should retain separate counsel. If a claim exceeds limits, the insured faces personal liability for the excess[cite: 6]. The insured should formally notify the insurer they want a settlement within limits, which sets up a bad faith claim if the insurer refuses and loses. Nima, here is the same idea in very simple language, with the legal words explained inside the paragraph: Usually, the insurer (the insurance company that provides your insurance) and the insured (the person or company that bought the insurance) want the same thing: they both want to properly handle the claim (a request for the insurance company to pay for a loss or damage). However, a conflict (a serious disagreement) can happen in several situations. For example, the insurer may deny coverage (say that the insurance policy does not cover the loss), the claim may be worth more than the policy limits (the maximum amount the insurance company has agreed to pay), or the insured may disagree with the insurer's decision to accept a settlement (an agreement to pay a certain amount to end the legal dispute). In these situations, the insured should hire separate counsel (their own independent lawyer, instead of relying only on the lawyer chosen by the insurance company). If the claim is worth more than the policy limit, the insured may have to pay the extra amount personally. For example, if someone is legally required to pay $1,000,000, but their insurance will only pay $500,000, the insured may personally have to pay the remaining $500,000. The insured should formally tell the insurer, in writing, that they want the claim settled within the policy limit. If the insurer refuses to do this, continues fighting the case, and eventually loses and has to pay more than the policy limit, the insured may be able to bring a bad faith claim (a legal claim saying that the insurance company acted unfairly or failed to properly protect its customer).",
+    ex: "You have a one million dollar policy but get sued for two million. The insurance company wants to gamble at trial, but if they lose, you personally owe the extra million. You need your own lawyer to force the insurer to settle within your limits to protect your personal bank account[cite: 6]."
+  },
+  {
+    title: "Diagram 9 — The Faulty-Design Exclusion + Resultant Damage Carve-Out",
+    text: "On an all-risks builders' risk policy, you must ask if the loss was caused by faulty design, materials, or workmanship. Under the state-of-the-art test, if the design met the then-current state of the art, it is not considered faulty. If it is faulty, the cost of making good the faulty work itself is excluded. However, damage to other, genuinely separate property may be covered as resultant damage, unless courts view it as part of the same integrated contractual obligation. Sure, Nima. Here is the same idea in much simpler language, with the difficult legal words explained inside the paragraph: Under an all-risks builders' risk insurance policy (insurance that generally covers accidental damage to a building or construction project unless the policy specifically excludes it), you first need to ask what caused the damage. Was it caused by a faulty design (a mistake in the plans or engineering design), faulty materials (bad or unsuitable materials), or faulty workmanship (poor work done by the people building or installing something)? To decide whether a design was faulty, courts may use the state-of-the-art test (they look at what was considered the best and most advanced knowledge and technology available at the time the design was created). If the design met the knowledge and technology available at that time, it is generally not considered faulty, even if people later discover a better way to design it. If the design, materials, or workmanship really were faulty, the insurance usually does not pay for fixing the faulty work itself. For example, if a contractor installs a defective pipe, the cost of replacing that defective pipe may not be covered. However, if that defective pipe causes separate damage to other property—for example, water damages a different part of the building—that additional damage may be covered as resultant damage (damage that happens because of the original problem). However, the court may decide that the supposedly \"separate\" damage is actually part of the same overall work the contractor was hired to complete. If so, the insurance may not cover it either.",
+    ex: "You build a faulty brick wall and it collapses onto a parked car. The insurance will absolutely not pay to rebuild your bad wall, because fixing faulty work is excluded[cite: 6]. But the crushed car is resultant damage to other property, so the insurance will pay to replace the car[cite: 6]."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  // Combine the main text and the example for the audio read-out
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

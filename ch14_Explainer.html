@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 14 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 14 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Voluntary-to-Involuntary Spectrum</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 9</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Voluntary-to-Involuntary Spectrum",
+    text: "Dispute resolution methods sit on a spectrum from completely voluntary to completely forced. Negotiation is fully voluntary; if someone walks away, nothing happens. Mediation forces attendance if it is in your contract, but you can still refuse to settle. Arbitration is a trap: it is voluntary to put it in a contract, but once signed, it legally forces you to participate. Finally, litigation is completely involuntary for the defendant. If you get sued and ignore it, you automatically lose. Dispute resolution (the different ways people or companies solve disagreements without or with the help of the legal system) can be placed on a scale from completely voluntary (you choose whether to participate) to completely forced (the law requires you to participate). Negotiation (when two sides directly talk to each other to solve a problem) is the most voluntary method. Nobody can force you to continue talking. If one person decides to leave, the process simply stops, and nothing legally happens. Mediation (a process where a neutral person called a mediator helps both sides communicate and try to find an agreement) is a little different. If you agreed in a contract (a legal agreement between people or companies) to use mediation, you may be required to attend the mediation meeting. However, you are not forced to agree to a solution. You can still say, \"No, I don't accept this deal.\" Arbitration (a process where a private decision-maker called an arbitrator listens to both sides and makes a decision, similar to a judge) is different from mediation. At first, choosing arbitration is voluntary because both sides agree to put it in a contract. However, once you sign that contract, you are usually legally required to use arbitration if a dispute happens. You cannot simply say, \"I changed my mind; I want to go to court instead.\" Litigation (the process of solving a dispute through a court and a judge) is the most forced method, especially for the defendant (the person or company being accused or sued). The defendant does not choose whether a lawsuit happens. If someone sues you and you completely ignore the case, the court can make a decision against you automatically. This is called a default judgment (a court decision made because one side did not respond or participate). In simple terms: Negotiation: \"Let's talk if we want to.\" → Nobody can force you. Mediation: \"You must come and talk, but you don't have to agree.\" Arbitration: \"You agreed before, so now you must follow this process.\" Litigation: \"The court process has started; you must respond.\" The main idea is: the further you move from negotiation toward litigation, the less choice you have and the more legally controlled the process becomes.",
+    ex: "A client sends you an email demanding a discount. You can just ignore it—that is failed negotiation. But if they formally sue you in court and you ignore the lawsuit, the judge will issue a default judgment against you and drain your bank account."
+  },
+  {
+    title: "Diagram 2 — The Litigation Timeline",
+    text: "A lawsuit is not a single event; it is a long, rigid timeline. It starts with pleadings, where the Statement of Claim and Defence outline the fight. Then comes the Discovery phase. This is where lawyers demand all your emails, documents, and question you under oath to eliminate surprises. Because Discovery exposes all the evidence, most cases settle right here before Trial. If you go to Trial and lose, the judge will usually order you to pay a large chunk of the winner's legal costs. A lawsuit (a legal process where one person or company asks a court to solve a problem with another person or company) is not just one event. It is a long process with several steps. First comes pleadings (the first written documents that explain what each side says happened). The person who starts the lawsuit submits a Statement of Claim (a document explaining what they believe the other side did wrong and what they want the court to do). The other side responds with a Defence (a document explaining why they disagree with the claim). Together, these documents explain what the disagreement is about. Next comes Discovery (the stage where both sides must share important information and evidence related to the lawsuit). During Discovery, lawyers may ask for your emails, documents, and other evidence. They may also ask you questions under oath (a serious promise to tell the truth). This process helps both sides understand the evidence and reduces surprises (unexpected evidence or arguments) later. Because both sides usually understand the evidence much better after Discovery, many lawsuits settle (the two sides reach an agreement instead of continuing to Trial) at this stage. If they cannot agree, the case goes to Trial (a formal court process where both sides present their evidence and arguments to a judge). If you lose at Trial, the judge will usually order you to pay a significant part of the winner's legal costs (money spent on lawyers and other legal services).",
+    ex: "Your firm is sued for a flawed foundation. During the Discovery phase, the other side forces you to hand over internal emails where your junior engineer admitted they didn't check the soil report. Knowing the jury will see this at trial, your firm quickly decides to settle the case."
+  },
+  {
+    title: "Diagram 3 — The Third-Party Claim Branching Problem",
+    text: "If someone sues you (takes you to court because they believe you did something wrong), but the real problem was actually caused by a subcontractor (a person or company hired by you to complete part of the work), you have an important decision to make. One option is to fight the owner’s claim first and say, \"I did not cause this problem.\" If you lose the case, you can later start a second lawsuit against the subcontractor to try to recover your losses. However, this is risky because the subcontractor was not part of the first trial (the court process where both sides present their arguments and evidence). Since they were not there, they can later bring new arguments or defenses (reasons why they believe they should not be responsible). This means you could lose the first case and then also struggle to win against the subcontractor. A better option is a Third-Party Claim (a legal process where you bring another person or company into the same lawsuit because you believe they are responsible for all or part of the problem). Instead of having two separate court cases, you include the subcontractor in the original case from the beginning. This allows one judge to look at the entire situation, decide who is responsible, and make one final decision that applies to everyone involved. This saves time, avoids repeating the same arguments, and reduces the risk of getting different decisions from different trials.",
+    ex: "A client sues you because the HVAC system you specified failed. The real fault belongs to the manufacturer who built a defective fan. Instead of fighting the client alone, you file a Third-Party Claim to drag the manufacturer into the same courtroom, ensuring the judge makes them pay the client directly."
+  },
+  {
+    title: "Diagram 4 — The Arbitration Setup Decision Tree",
+    text: "Before arbitration (a private way of solving a dispute without going to court, where both sides ask a neutral person to make the final decision) can begin, the people involved must first agree on the rules (how the arbitration will be run, such as the timeline, procedures, and what evidence can be used). However, the most important step is choosing the arbitrator (the neutral person who listens to both sides, reviews the evidence, and makes the final decision—similar to a judge, but outside of court). Since the arbitrator acts like your private judge (a decision-maker chosen for your case instead of a government judge), they should have technical expertise (good knowledge and experience in the subject of the dispute, such as engineering or construction) and be neutral (they must not favor either side). If both sides agree on who the arbitrator should be, the process can move forward easily. If they cannot agree because they are in serious conflict, the arbitration does not stop. Instead, a court or a recognized arbitration organization (an official organization that manages arbitration cases and appoints qualified arbitrators) will step in and choose an arbitrator for them, so the arbitration can continue.",
+    ex: "You have an arbitration clause with a software vendor, but you cannot agree on who should judge the dispute. You want an engineer; they want a lawyer. Instead of being stuck forever, a judge simply appoints an independent software expert to decide the case, forcing both of you to proceed."
+  },
+  {
+    title: "Diagram 5 — Method Selection: Matching the Dispute to the Tool",
+    text: "When two people or companies have a dispute (a dispute is a disagreement that they cannot solve on their own), the best way to solve it depends on the situation. If one side refuses to cooperate or even talk, you may have no choice but to use litigation (taking the dispute to court, where a judge has the legal power to make a decision that everyone must follow). If both sides are willing to work together, then other options may be better. If the case involves trade secrets (valuable confidential business information, such as formulas, designs, or manufacturing methods) and you want to keep everything private, or you want someone with special knowledge of the subject to decide the case instead of a judge, choose arbitration (a private process where an independent expert, called an arbitrator, listens to both sides and makes a decision that is usually legally binding). If the main goal is to preserve the business relationship and find a solution that both sides can accept, use mediation (a neutral person, called a mediator, helps the two sides communicate and reach their own agreement but cannot force a decision) or negotiation (the two sides talk directly to each other and try to reach an agreement without involving a court or another decision-maker).",
+    ex: "Your competitor steals your patented pump design. You do not want to preserve the relationship, and they are ignoring your calls. You must choose Litigation because a judge is the only person who has the power to issue an injunction and send the police to shut down their factory."
+  },
+  {
+    title: "Diagram 6 — The Privilege Shield (Negotiation and Mediation)",
+    text: "When people try to solve a disagreement without going to court, they may use negotiation (a discussion where both sides try to reach an agreement) or mediation (a process where a neutral person, called a mediator (someone who helps both sides communicate and find a solution), helps both sides reach an agreement). The law gives these conversations a special protection called privilege (a legal protection that keeps certain information private and prevents it from being used in court). This means that if one side makes a settlement offer (an offer to give money or make an agreement to end the disagreement), that offer usually cannot be shown to a judge if the negotiation fails. For example, if a company offers $50,000 to avoid a lawsuit, and the other side refuses, they normally cannot go to court and say, \"They offered money, so they must admit they did something wrong.\" The reason for this protection is simple: without this privacy, people would be afraid to make honest offers or discuss possible solutions. They might worry that anything they say during settlement talks could later be used against them in court. The privilege encourages both sides to speak openly and try to solve the problem peacefully.",
+    ex: "During mediation for a collapsed roof, you offer to pay the owner fifty thousand dollars just to end the headache, but they demand a million. Mediation fails. At trial, the owner tries to tell the judge, 'They offered me fifty grand, so they know they are guilty!' The judge will strike that from the record because it is protected by the privilege shield."
+  },
+  {
+    title: "Diagram 7 — The Binding Mediation Role-Conflict Trap",
+    text: "Binding mediation is a hybrid process where the same person acts as a mediator, and if that fails, they instantly become the arbitrator. This creates two fatal problems. First, as a mediator, they heard secret bottom-line information from each side privately. As an arbitrator, they now hold secrets that the other side cannot defend against. Second, because parties know this person might eventually judge them, they hide their true weaknesses, destroying the honesty needed for mediation. Binding mediation is a process that combines mediation and arbitration. In mediation, a neutral person called a mediator (a person who helps two sides communicate and try to reach an agreement) helps both sides solve their disagreement. The mediator normally does not make the final decision. The two sides make the decision themselves. In binding mediation, however, the same person can suddenly change roles. If the two sides cannot reach an agreement, the mediator becomes an arbitrator (a neutral person who listens to both sides and then makes a decision that the parties must follow). This creates two serious problems. First, during mediation, the mediator may speak privately with each side. A party might reveal a bottom line (the worst deal or least favorable result they are still willing to accept) or other confidential information (private information they do not want the other side to know). If the mediator later becomes the arbitrator, they may use this private information when making the final decision. The other side does not know what information the arbitrator heard privately and therefore cannot properly respond to it or defend themselves against it. Second, mediation only works well when people are honest. But if the parties know that the mediator might later become the person who makes the final decision, they may be afraid to reveal their real weaknesses or true position. As a result, they hide important information. This destroys the openness and honesty that mediation needs to help the parties reach an agreement. In simple terms: a person should usually not be both the person who privately learns everyone's secrets while trying to help them settle and then the person who later makes the final decision. If people know that the mediator might eventually judge them, they will be less honest during mediation.",
+    ex: "You tell a mediator in private that your firm is completely out of cash and desperate to settle. Mediation fails. That same mediator puts on their arbitrator hat, remembers you are broke, and uses that secret weakness against you when rendering their binding, final judgment."
+  },
+  {
+    title: "Diagram 8 — The Mediator's Private-Meeting Privilege",
+    text: "In a legal disagreement, there are different people who can help solve the problem. A judge (a person in a court who listens to both sides and makes the final decision) and an arbitrator (a person chosen to listen to both sides of a dispute and make a decision, similar to a judge but outside a normal court) must always be fair and neutral (not support either side). Because of this, they are not allowed to meet privately with only one side. If they talked secretly with one side, the other side would not know what was said and would not have a chance to respond. This would make the process unfair. A mediator (a neutral person who helps two sides reach an agreement but does not make the final decision) works differently. A mediator is allowed to meet with each side privately. These private conversations are called confidential meetings (private discussions where the information shared is kept secret). The mediator uses these meetings to understand what each side really wants, what problems are most important, and where both sides might be willing to compromise (give up something to reach an agreement). The mediator's job is not to decide who is right or wrong—it is to help both sides find a solution they can accept.",
+    ex: "During a tense dispute, the mediator puts the client in one room and your engineering team in another. The mediator walks into your room alone and asks, 'What is your absolute maximum payout?' You can tell them the truth, knowing they will not tell the client, and they will use that info to silently guide the negotiation."
+  },
+  {
+    title: "Diagram 9 — The Expert Witness Neutrality Boundary",
+    text: "An expert witness (a person with special knowledge, training, or experience in a specific area who gives an opinion in a court case) may be paid by one side in a legal case. For example, a company may pay an engineer to explain whether a machine design was safe or not. However, the expert witness has a duty (a legal responsibility or obligation) to help the court (the judge or legal system that decides the case), not just to help the person or company who paid them. In other words, an expert is not a cheerleader (someone who only supports one side and ignores the truth). Their job is to give an honest, professional opinion based on facts and knowledge. An expert is allowed to choose the most credible theory (the explanation that has the strongest evidence and makes the most sense), but they cannot present a crazy or unsupported theory (an idea with little or no scientific evidence) as if it were a proven scientific fact. They must be honest about what is known, what is uncertain, and what is only a possibility. Most importantly, an expert cannot accept a contingent fee (a payment arrangement where the expert only gets paid if the person or company they support wins the case). For example, an expert cannot say, \"I will give my opinion, but you only pay me if you win.\" This creates a conflict of interest (a situation where personal benefit may influence someone's professional judgment). It can damage the expert's credibility (the amount people trust their knowledge and honesty) and may even lead to license suspension (temporarily losing the legal permission to practice their profession). Simple NPPE memory sentence: An expert witness is paid by a party, but their real job is to help the court with honest expert knowledge—not to support one side blindly. They must use evidence, avoid false claims, and never get paid only if their side wins.",
+    ex: "You are hired as a structural expert for a trial. The lawyer says, 'If we win, I will give you twenty percent of the payout.' You accept. The engineering association finds out, suspends your professional license for three months for unprofessional conduct, and the judge throws your entire report in the garbage."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

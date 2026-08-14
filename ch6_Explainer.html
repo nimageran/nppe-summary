@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 6 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 6 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Enforceable Contract Decision Tree</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 9</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Enforceable Contract Decision Tree",
+    text: "Think of a contract like a brutal obstacle course. To even exist, it must survive six specific gates in a row. First, there must be an offer and an acceptance. Second, that offer has to contain all the essential details, like price and scope. Third, value must be exchanged, which is called consideration. Fourth, the parties must actually intend to create legal relations. Fifth, they must have legal capacity. And finally, the purpose of the deal must be legal. If you fail even one of these gates, there is zero enforceable contract. But passing all six gates only means the contract exists; you then have to check if it can be killed or 'voided' through the back door. Think of a contract (a contract is a legally enforceable agreement between two or more people or businesses) like a video game where you must pass six checkpoints in order. If you fail even one, the contract does not legally exist. The first checkpoint is an offer (one person clearly says what they are willing to do) and an acceptance (the other person agrees to that exact offer). The second checkpoint is that the offer must include all the essential terms (the important details of the agreement, such as the price, what work will be done, or what product will be sold). The third checkpoint is consideration (each side must give or promise something of value in return—for example, one person provides a service, and the other pays money). The fourth checkpoint is the intention to create legal relations (both sides understand and intend that this is a real legal agreement, not just a casual promise or joke). The fifth checkpoint is legal capacity (both parties must be legally able to enter into a contract—for example, they must have the legal ability to make their own decisions). The sixth checkpoint is legality (the purpose of the contract must be legal; the law will not enforce an agreement to do something illegal). If all six checkpoints are passed, an enforceable contract (a contract that a court can require people to follow) is created. However, that does not mean the contract is guaranteed to stay valid forever. You must then check whether there is a reason the contract can be voided (legally cancelled or treated as if it should no longer be enforced), such as fraud, misrepresentation, duress, or another legal problem.",
+    ex: "For example, you offer to pay a contractor $5,000 to assemble a machine, they accept, you shake hands, and building the machine is perfectly legal. You passed the gates. But if that contractor was secretly a 15-year-old high school student, it instantly fails the 'capacity' gate. The contract never legally existed."
+  },
+  {
+    title: "Diagram 2 — The Counter-Offer Chain: Why Negotiation Kills Old Offers",
+    text: "Here is a common trap people fall into during negotiations. Let's say a client offers you one hundred thousand dollars for a six-month project. You say, I want one hundred and ten thousand dollars. The exact legal moment you make that counter-offer, the original one hundred thousand dollar offer is completely dead. It is killed. If the client refuses your higher price, you cannot suddenly say, fine, I will accept your original offer. That original offer does not exist anymore. Legally, when you say you want the original deal back, you are actually making a brand new counter-offer to the client. Here is a common trap people can fall into during negotiations (when two people are discussing the terms of a deal). Imagine a client (the person or company hiring you) offers you $100,000 for a six-month project. You respond, \"I want $110,000 instead.\" This response is called a counter-offer (a counter-offer is when someone receives an offer but says, \"I don't accept your offer; I want different terms\"). The exact moment you make that counter-offer, the original $100,000 offer is completely finished. You cannot later go back and accept it. For example, if the client says, \"No, I'm not paying $110,000,\" you cannot then say, \"Okay, fine, I'll accept your original $100,000 offer.\" The original offer no longer exists because you rejected it by asking for $110,000. Legally, when you now say, \"Fine, I'll take the original $100,000,\" you are actually making a new offer (a new proposal for a deal) to the client. The client can then say yes or no to your new offer. The distinction is purely about the legal status of the offer, not the content of the deal. Think of it this way: First $100k: Client offers it → Offer #1 You ask for $110k → Offer #1 is terminated/rejected You later say “I'll take $100k” → Offer #2 Offer #1 and Offer #2 have identical terms, but they are legally considered different offers because Offer #1 no longer exists. So when lawyers say “new offer,” they are NOT saying “new deal with different terms.” They mean a new proposal, even if the proposal contains the exact same terms as the original. That's the weird part: same terms ≠ same legal offer.",
+    ex: "For example, if I offer to sell you my used CNC mill for $10,000, and you reply 'I will give you $8,000,' my $10,000 offer is dead. If I say no to the $8,000, you cannot come back tomorrow and say 'Okay fine, I'll pay the $10,000.' You have to make me a brand new offer for the $10,000, and I can just say no."
+  },
+  {
+    title: "Diagram 3 — The Consideration Flow",
+    text: "For a contract to be valid, value has to flow in both directions. This is called consideration. You promise to pay money, and the other person promises to do the work. If value only flows one way, for example, if you just promise to give your friend a car for nothing in return, that is just a gift. Courts do not enforce promises to give gifts. There is only one exception to this rule. If you write down a promise to give a gift and put a formal legal seal on the document, the law accepts that seal as a substitute for consideration. For a contract (a legally enforceable agreement between people) to be valid, usually something valuable must be exchanged by both sides. This is called consideration (consideration means that each person gives or promises to give something valuable in exchange for what the other person gives or promises). For example, you promise to pay me $1,000, and I promise to repair your car. You give me money, and I give you a service, so value is going in both directions. But if only one person gives something and gets nothing in return, it is usually a gift (a gift is something you freely give someone without expecting anything in return). For example, if you simply promise to give your friend your car for free, and your friend does not have to give you anything, that is a gift, not a contract supported by consideration. Courts generally do not enforce promises to give gifts (meaning you usually cannot go to court and force someone to give you a gift they promised). There is one important exception: if you write the promise down and put a formal legal seal (a special legal mark or formality showing that you intentionally made the promise) on the document, the seal can take the place of consideration. In that situation, the law may enforce the promise even though the other person did not give you anything in return. Not necessarily. The key is what the other person gives in exchange. If there is a contract involving a gift, you can still have consideration if there is something exchanged between the parties. Example: Situation 1 — Pure gift: “I will give you my car for free.” You give nothing in return. ➡️ No consideration → generally a gift, not an enforceable contract. Situation 2 — Gift + consideration: “I will give you my car if you pay me $1.” You give the car, and the other person gives $1. ➡️ Consideration exists → this is a contract, even though the car is being sold for a very small amount. Important: The fact that something is called a “gift” doesn't automatically eliminate consideration. What matters is whether the parties exchanged something of legal value. So the easiest rule is: 🎁 Pure gift = no consideration. 🤝 Exchange = consideration.",
+    ex: "For example, if I promise to give you my old AutoCAD software license for free just because you are a good friend, and then I change my mind, you cannot sue me. But if you promised to give me $50 for it, value flows both ways, and it becomes a legally binding contract."
+  },
+  {
+    title: "Diagram 4 — Past Consideration vs Fresh Consideration",
+    text: "This is the most highly tested trap on the exam. Imagine you are in the middle of a project, and the contractor demands more money to finish on time. You reluctantly agree. After the job is done, do you legally have to pay that extra money? No. Why? Because the contractor did not give you anything new. They were already legally obligated to finish on time. Promising to do what you are already legally bound to do is called past consideration, and it is useless. To make an amendment enforceable, the contractor must give fresh consideration, offering something totally new. This is one of the most commonly tested traps on the exam. Imagine you are in the middle of a construction project, and the contractor (the person or company hired to do the construction work) says, \"I want more money, or I won't finish the project on time.\" You reluctantly agree to pay the extra money. After the job is finished, do you legally have to pay that extra money? Not necessarily. Why? Because the contractor did not give you anything new in exchange for the extra money. The contractor was already legally obligated (already required by the original contract) to finish the project on time. Simply promising to do something that you were already required by law or contract to do is called past consideration (something that does not count as new value because the person was already required to do it). Past consideration is generally not enough to make a new promise enforceable (legally required to be kept). To make a contract amendment (a change made to an existing contract) enforceable, there usually needs to be fresh consideration (something new that one side gives or promises in exchange for the new agreement). For example, if the contractor says, \"I will finish one week earlier if you pay me an extra $5,000,\" finishing one week earlier is something new, so that can be fresh consideration.",
+    ex: "For example, a machine shop agrees to machine 100 parts for $5,000 by Friday. On Thursday, they say they will only finish them if you pay an extra $1,000. You agree just to get the parts. Later, you only owe the original $5,000. They gave you past consideration—doing exactly what they already promised to do. The $1,000 promise is legally void."
+  },
+  {
+    title: "Diagram 5 — The Letter of Intent Trap",
+    text: "A letter of intent is supposed to be a safe, non-binding placeholder before you sign the real, complex contract. But in reality, it is a legal trap that fails in three ways. One: one side might actually think it is a binding deal. Two: you might start working while waiting for the final contract, and courts will look at your performance and decide a real contract has been formed simply because you started acting like it. Three: if you write the letter of intent too clearly, a judge might decide it is an actual contract and force the deal through. A letter of intent (a document where two sides say, “We plan to make a deal, but we are not signing the final contract yet”) is supposed to be a safe, non-binding document (non-binding means you normally are not legally required to follow it). It is meant to be used as a temporary step while the two sides prepare the real, more detailed contract. However, a letter of intent can create legal problems in three ways. First, one side might actually believe that the letter is a real, binding agreement (a deal that the law requires both sides to follow), even though the other side thinks it is only a plan. Second, the two sides might start working together while they are still waiting to sign the final contract. A court (the legal system that decides disputes) might look at what they actually did and say, “You both acted like you already had a contract.” The court could then decide that a real contract was created, even though the final contract was never signed. Third, if the letter of intent is written too clearly and includes all the important details of the deal, a judge might decide that it is actually a contract (a legally enforceable agreement) rather than just a plan. If that happens, the judge could require the parties to follow the deal. So, even though a letter of intent is supposed to be a simple “we intend to make a deal later” document, it can sometimes create a real legal obligation.",
+    ex: "For example, you sign a quick Letter of Intent to design a complex automated assembly line, assuming you will work out the heavy liability and payment terms later. But the owner tells you to start buying materials right away. Because you started the physical work, a court will likely rule that you accidentally locked yourself into a binding contract before you even figured out the payment terms."
+  },
+  {
+    title: "Diagram 6 — Voiding a Contract: The Six Doors",
+    text: "Even if a contract perfectly survives the first gauntlet of creation, it can still be killed through one of six doors. These are mistake, misrepresentation, duress, unconscionability, frustration, or illegality. You only need to prove one door to break the contract. But remember this very important rule: if a contract is voidable, it does not die automatically. The innocent party gets to choose. You can choose to walk away and cancel the deal, or you can choose to ignore the issue and keep the contract going. Even if a contract (a legal agreement between two or more people) was created correctly, there are still six situations that can cause problems with the contract: mistake (someone misunderstood an important part of the deal), misrepresentation (someone gave false or misleading information that caused the other person to agree), duress (someone was forced or threatened into agreeing), unconscionability (the deal is extremely unfair, usually because one person took advantage of the other), frustration (something unexpected happens after the contract is made and makes it impossible or completely different to carry out), or illegality (the contract requires something that the law does not allow). You only need one of these problems to potentially get out of the contract. But there is one very important point: if the contract is voidable (a contract that one person has the legal right to cancel, but that does not automatically disappear), the contract does not end automatically. The innocent party (the person who was not responsible for the problem) gets to choose. They can cancel the contract and walk away, or they can keep the contract and continue with the deal as if they are choosing not to use their right to cancel.",
+    ex: "For example, if an owner hires you to dig a foundation, and explicitly lies saying there is no solid bedrock, you can void the contract when you hit rock. But if you have special drilling equipment and the price of digging rock is suddenly highly profitable for you, you can choose to ignore their lie and keep the contract alive to make money."
+  },
+  {
+    title: "Diagram 7 — The Economic Duress Test",
+    text: "Almost every business deal involves pressure. Someone is always threatening to walk away. But normal commercial pressure is not legal duress. To prove duress and void a contract, you have to prove true coercion of the will. You must prove you had absolutely no real choice. The court will look at whether you protested, if you had any other practical option, if you got legal advice, and if you tried to avoid the contract after the pressure lifted. If you had other options but just made a tough call, the contract stands. Almost every business deal (an agreement between people or companies about buying, selling, working, or providing something) involves some pressure. For example, someone might say, \"If you don't accept this price, I'm going to walk away.\" But normal business pressure is not the same as duress (duress means someone puts such strong pressure or threats on you that you feel you have no real choice but to agree). To prove duress and void the contract (cancel the contract so that it is no longer legally valid), you must show that the pressure was so serious that it forced you to agree against your will. In other words, you need to show that you had absolutely no reasonable choice. The court (the judge deciding the case) may look at things like: Did you protest (tell the other person that you did not agree with what they were doing)? Did you have any other practical option (another realistic way to deal with the situation)? Did you get legal advice (advice from a lawyer)? And after the pressure ended, did you try to get out of the contract (take steps to cancel or challenge the agreement)? If you had other reasonable choices but simply decided that accepting the deal was your best or least-bad option, that usually is not duress, and the contract will normally still be valid.",
+    ex: "For example, if a supplier threatens to cut off your critical custom-machined parts right before a massive shipment deadline unless you sign a terrible new contract, and you cannot buy those specific parts anywhere else in the world, that is economic duress. You signed because you were trapped with zero alternatives."
+  },
+  {
+    title: "Diagram 8 — Waiver and Estoppel: The One-Way Ratchet",
+    text: "This is a trap where your own nice behavior is used against you. If you consistently ignore a strict rule in your contract, you waive your right to use it. The other party legally relies on your leniency, and you are now estopped from suddenly enforcing it. The strict rule is completely dead. To get your strict right back, you must give clear, reasonable written notice that you will start enforcing it again. This exact rule applies to construction contracts that say changes must be in writing; verbally approving changes kills the written-only rule. This is a legal situation where being too flexible or too nice can work against you. Imagine your contract (a contract is a legally binding agreement between two or more people or companies) contains a strict rule (a requirement that everyone is expected to follow exactly). If you repeatedly ignore that rule and allow the other person to break it without complaining, the law may decide that you have waived (waived means you voluntarily gave up your right to enforce that rule, even if you never said so directly) your right to rely on it. Because of your past behavior, the other person may reasonably believe that the rule no longer matters and continue acting that way. If they relied on your behavior (they made decisions because they believed you would continue being flexible), the law may say you are estopped (estopped means you are not allowed to suddenly change your mind and enforce the rule after leading the other person to believe you wouldn't). In other words, the strict rule is treated as if it is no longer effective. If you want to use that rule again, you must first give the other person clear and reasonable written notice (a written message that clearly tells them you will start enforcing the rule from now on). A common example is in construction contracts (agreements for building or construction work). Many of these contracts say that all changes must be approved in writing. However, if the owner regularly approves changes by phone or in person without requiring anything in writing, they may lose the right to later insist that \"changes are only valid if they are written down.\" Before enforcing that rule again, they must clearly tell the contractor in writing that future changes must follow the written approval requirement.",
+    ex: "For example, your master agreement says the client must pay a penalty if they miss the 30-day invoice deadline. But you let them pay at 45 days for an entire year without charging the penalty. You have waived your right. You cannot suddenly surprise them with a massive late fee next month without giving them a strict written warning first."
+  },
+  {
+    title: "Diagram 9 — Quantum Meruit: When Contract Law Steps Aside",
+    text: "Quantum meruit is Latin for 'what it is worth.' Many people mistakenly think this is just a backup rule to get paid when they feel cheated. That is wrong. Quantum meruit only triggers if there is absolutely zero valid contract covering the work you did. This happens if the scope is fundamentally changed, if the owner forces you to work differently but denies it is a change, or if the original contract is entirely voided. When contract law steps aside, quantum meruit forces them to pay the fair market value of your work, plus profit. Quantum meruit (a Latin phrase meaning \"what the work was reasonably worth\") is a legal rule that can allow someone to get paid for work they performed. Many people mistakenly think it is simply a backup rule (a rule you use when another way of getting paid does not work) for when they feel they were treated unfairly. That is not correct. Quantum meruit generally applies when there is no valid contract (a legally valid agreement) that covers the work you actually did. This can happen when the scope (the work you originally agreed to do) is changed so much that the original agreement no longer covers the new work, when the owner requires (forces or tells) you to do the work in a completely different way but refuses to recognize that this is a change to the contract, or when the original contract is voided (cancelled or treated as having no legal effect). When there is no valid contract covering the work, quantum meruit can require the owner to pay the fair market value (a reasonable price that someone would normally pay for that kind of work) of the work you actually performed, plus profit (extra money the person normally earns on top of their costs).",
+    ex: "For example, your engineering firm is hired to design a simple manual conveyor belt. Halfway through, the owner verbally tells you to add a massive robotics sorting arm, but refuses to sign a formal change order and denies that it is a change. Quantum meruit allows a judge to step in, look at the value of your complex robotics work, and force the owner to pay you a fair market rate."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

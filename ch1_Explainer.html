@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 1 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 1 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Division of Powers</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 11</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Division of Powers",
+    text: "Before talking about a law, you first need to know who has the power to make that law. In Canada, there are two main levels of government: the federal government (the national government that makes laws for the whole country) and the provincial government (the government of each province, like Manitoba). The federal government deals with big national topics that affect everyone in the country, such as criminal law (laws about crimes like theft or assault) and patents (legal protection for inventions). The provincial government handles most everyday business and private law (laws between people and companies), such as contracts (agreements between parties), negligence (when someone causes harm by being careless), liens (a legal claim over property until a debt is paid), and even the regulation of engineers (rules about who can work as an engineer and how they must behave). However, there are a few important exceptions where the federal government also steps into business-related areas, such as competition law (rules against unfair business practices like bid-rigging, which is secretly fixing prices in bids) and labor law for certain industries (workplace rules for specific sectors like airlines that operate across the country).",
+    ex: "Imagine you sign a contract to build a warehouse in Winnipeg. A contract (a legal agreement between two people or companies) is usually handled by provincial law (laws made by the province, like Manitoba, that control most business and construction deals inside that province). So normally, the rules for your building project would come from Manitoba law because the work is happening in Manitoba. But now imagine something different happens: you secretly work with a competitor to rig the bidding process (this means cheating by unfairly controlling or fixing who wins the contract instead of letting it be fair). That is no longer just a normal local business issue. Now it becomes illegal under a federal law (laws made by the national government of Canada, which apply across the whole country). In this case, the Competition Act (a Canadian federal law that stops cheating in markets, like price-fixing or bid-rigging) applies. So the simple idea is: the province handles normal contracts and business rules, but if the behavior becomes unfair or criminal for the whole economy (like cheating in bidding), then the federal government steps in and can even arrest you under national law."
+  },
+  {
+    title: "Diagram 1b — Territories vs Provinces",
+    text: "This idea is about how provinces and territories (different levels of government areas in Canada) get their legal power. A province (like Manitoba or Ontario) gets its authority directly from the Constitution (the highest legal document in the country that creates and limits government power). A territory (like Yukon, Northwest Territories, or Nunavut) gets its authority in a different way: its power is delegated (given) by the federal government (the main national government of Canada), and this power can technically be changed or taken back because it is not directly written into the Constitution in the same way. However, in real life, this difference usually does not matter much. Both provinces and territories make and enforce laws that work in almost the same way. For example, they both create rules for engineers, contracts, and businesses, and those rules are treated as valid law inside their region. So even though legally their “source of power” is different, practically speaking they behave almost the same in everyday legal situations.",
+    ex: "If you move to the Yukon to manage a mine, you must register with the Yukon's engineering association and follow their territorial building acts, exactly as if you were working in Ontario."
+  },
+  {
+    title: "Diagram 2 — The Federal-Provincial Conflict Rule",
+    text: "Sometimes a federal law (a law made by the Government of Canada that applies across the whole country) and a provincial law (a law made by a province, such as Manitoba or Ontario, that applies only in that province) deal with the same subject. Most of the time, both laws can be followed at the same time, so they both apply. However, if there is a direct operational conflict (a situation where it is literally impossible to obey both laws at the same time), then the federal law takes priority (it must be followed instead of the provincial law). In other words, the provincial law does not apply only to the part where it conflicts with the federal law. This happens because of the Constitution (the highest law in Canada that decides which level of government has the final authority in certain situations). This is called a constitutional override (the Constitution automatically gives the federal law priority over the conflicting provincial law).",
+    ex: "For example, imagine a province passes a law saying that all environmental reports (documents that describe how a project affects the environment) must be kept completely secret. Later, the federal government passes a law saying those same reports must be published online so everyone can read them. You cannot keep the reports secret and publish them online at the same time. Since it is impossible to do both, the federal law wins, and you must publish the reports online."
+  },
+  {
+    title: "Diagram 3 — The Canadian Court Hierarchy",
+    text: "Canada has different levels of courts, but the provincial systems are totally independent from each other, meaning they act almost like separate countries. At the bottom are the lower provincial courts handling minor issues, for example, a $3,000 small claims dispute over unpaid consulting hours. In the middle are superior trial courts, where major engineering lawsuits actually happen. These courts have inherent jurisdiction—meaning they have deep, historical legal powers to force people to do things (like ordering a contractor to immediately stop a dangerous excavation) even without a specific, modern written law telling them they can. At the top are courts of appeal, which do not hold new trials but simply double-check if the lower judges made a legal mistake. Finally, because these provincial systems are strictly independent, a judge's power stops at the provincial border. This is why an Ontario judge has zero power to order a Manitoba bank in Winnipeg to do anything, like freezing a company's bank account; you would have to take that Ontario ruling and ask a Manitoba court to enforce it. Above all of these provincial systems sits the Supreme Court of Canada, which is the highest court in the country. It does not handle regular, everyday lawsuits. Instead, it only hears very important cases that affect the whole nation, or cases where different provincial courts have made conflicting decisions on the same issue. Because it is the absolute top court, its decisions are final and apply to every single province. For example, if the Supreme Court of Canada rules on a major lawsuit about who is responsible when a structure collapses, that decision instantly becomes the law for engineers in Manitoba, Ontario, and the rest of Canada. It is the only court that can unite all the independent provincial systems under one single rule.",
+    ex: "You sue a client for $15,000 of unpaid CAD drafting work and go to the lower Small Claims Court. If you sue for $5 million over a factory fire, you must go to the Superior Court. If the client lives in Alberta, you cannot use a Manitoba court to automatically seize their Calgary assets without filing extra paperwork across the border."
+  },
+  {
+    title: "Diagram 4 — The Supreme Court Leave-to-Appeal Gate",
+    text: "If you lose a very important lawsuit in your province's Court of Appeal (usually the highest court in a province), you cannot automatically ask the Supreme Court of Canada (the highest court in the entire country) to hear your case. Instead, you must first ask for leave (official permission from the Supreme Court to hear your appeal). The Supreme Court will usually say no unless your case raises an issue of national importance (a legal question that affects many people or could change how the law is applied across Canada, not just the people in your case). Most engineering and construction disputes are simply disagreements over money or contracts (legal agreements between people or companies), so they usually do not involve questions that affect the whole country. Because of that, the Supreme Court normally refuses to hear those cases, and the Court of Appeal's decision remains the final one.",
+    ex: "Your firm loses a brutal $10 million lawsuit over a cracked foundation and the provincial Court of Appeal rules against you. You try to appeal to the Supreme Court. They reject your application in two minutes because a cracked foundation in one city is not a matter of national importance."
+  },
+  {
+    title: "Diagram 5 — The Charter: Government Acts Only",
+    text: "People falsely assume the Charter of Rights and Freedoms is a magical shield that protects them from everything and everyone. It is not. The Charter only acts as a leash on the government. It protects your basic rights—like freedom of speech or religion—strictly from state authorities. Think of state authorities as the police searching your car without a warrant, the military, or federal lawmakers trying to pass an unfair law. The Charter does absolutely nothing to protect you from private companies, businesses, or regular individuals. For example, if a government agency refuses to hire you because of your nationality or religion, you use the Charter to fight them. But if a private engineering firm in Winnipeg refuses to hire you for that exact same reason, the Charter is completely useless. Instead, to fight discrimination from a private company, a private employer, or even your landlord, you must use provincial Human Rights statutes (like the Manitoba Human Rights Code). Knowing the difference between when to use the Charter (against the government) versus a Human Rights Code (against private companies) is a classic trap on the NPPE exam. How the Charter Connects to the Courts To understand how they connect, think of the Charter as the rulebook and the courts as the referees. The Charter itself is just a piece of paper. It does not enforce itself. If you believe a government law or a police action violates your Charter rights, you cannot just yell \"Charter!\" to make it stop. You have to complain to a referee. You start at the provincial superior trial court (the \"heavy lifter\" middle court we talked about earlier). The judge there has the massive power to look at what the government did, compare it to the Charter, and if the government broke the rules, the judge can literally strike down that law (making it legally dead) or throw out evidence the police collected illegally. If the government or the citizen disagrees with that judge's decision, they appeal it. Eventually, the biggest, most complex Charter disputes—such as whether a new federal law violates freedom of speech on the internet—make their way all the way up to the Supreme Court of Canada. Because the Charter applies to the entire country, the Supreme Court's job is to be the ultimate referee. When the Supreme Court decides exactly what a sentence in the Charter means, every single provincial court, police officer, and government in Canada must follow that exact interpretation from that day forward, with zero exceptions.",
+    ex: "If the government passes a law saying engineers cannot practice certain religions, the Charter strikes the law down immediately. But if your private engineering firm fires you because of your religion, the Charter is useless; you must sue them under the provincial Human Rights Code."
+  },
+  {
+    title: "Diagram 6 — Statute Law vs Common Law",
+    text: "Canadian law is fed by two rivers. Statutes are written by politicians. Common Law is built from centuries of decisions made by judges. Officially, judges just 'interpret' what the politicians wrote in the statutes. Practically, when a judge interprets a vague statute, they are unavoidably creating new rules and expanding the law. Where politicians haven't written any statutes at all, like in basic contract formation, judge-made common law rules everything. Canadian law mainly comes from two sources. Think of them like two rivers flowing into the same lake. The first is statutes (laws that are officially written and passed by the government). Politicians create these laws, and they write down what the rules are supposed to be. The second is common law (rules that judges have developed over many years by deciding cases). Officially, judges are supposed to interpret statutes (interpret means explaining what the words in a law mean and how the law should apply to a particular situation). But sometimes a statute is vague (vague means the words are not clear enough and could have more than one meaning). When this happens, the judge has to decide what the law means in that situation. By making that decision, the judge can effectively create or expand a legal rule (meaning the judge's decision can become a rule that is followed in future cases). And sometimes politicians have not written a statute covering a particular issue at all. For example, many basic rules about how contracts are formed (how two people legally create an agreement) come from common law. In those situations, judges' past decisions provide the rules that courts use. So, in simple terms: sometimes the government writes the rule, and sometimes judges develop the rule through their decisions.",
+    ex: "Politicians write a vague statute saying 'all major builders must be licensed.' A judge later rules that software engineers programming robotic assembly lines count as 'major builders.' The judge just used common law interpretation to expand the political statute's reach."
+  },
+  {
+    title: "Diagram 7 — Common Law vs Civil Law: Why Quebec is Different",
+    text: "Most of Canada uses English Common Law, built on past judge decisions. Quebec uses the French Civil Law system, which relies on a massive, comprehensive book called the Civil Code. However, this difference only applies to private business law, like contracts and negligence. For federal matters like criminal law and patents, Quebec uses the exact same law as the rest of Canada. Ultimately, the basic outcomes of a business dispute in Quebec are usually very similar to the rest of Canada. Most of Canada uses English Common Law (a legal system where courts look at decisions made by judges in earlier cases to help decide new cases). Quebec uses French Civil Law (a legal system where the main rules are written down in a large, organized book called the Civil Code). However, this difference mainly matters for private business law (rules about things like contracts, business deals, and when one person or company causes harm to another person). For example, if two companies have a disagreement about a contract, Quebec may use different legal rules from provinces like Manitoba or Ontario. But for federal matters (laws that apply across the entire country), Quebec follows the same laws as the rest of Canada. For example, criminal law (laws about crimes such as theft or assault) and patent law (laws protecting inventions) are basically the same across Canada. So, even though Quebec has a different legal system for many private business matters, the final result of a business dispute is often quite similar to what would happen in the rest of Canada.",
+    ex: "If you patent a new high-pressure valve in Montreal, the federal patent rules are exactly the same as in Winnipeg. But if you get sued for breaching a supplier contract in Montreal, the judge will look up the specific rules in the Civil Code of Quebec, rather than looking at old English case law."
+  },
+  {
+    title: "Diagram 8 — Contract vs Tort: The Voluntary/Involuntary Split",
+    text: "The two biggest areas of law you will deal with are contracts and torts. A contract (a legally binding agreement between two or more people or organizations) is something you choose to enter into. For example, when you sign an agreement with a client, you are voluntarily accepting certain responsibilities and promises. A tort (a wrongful action that causes harm to another person, even if there was no agreement between you) is different because it is not something you choose. The law automatically requires everyone to act carefully and avoid harming others. For example, negligence (failing to use reasonable care, causing someone harm) is a type of tort. You do not need to sign anything to have this responsibility—the law already requires it. If your mistake is serious enough, a client can take legal action against you for both reasons at the same time: breaking your agreement (contract) and causing harm through careless actions (tort). Simple way to remember: Contract = \"I promised to do something.\" → Responsibility comes from an agreement you accepted. Tort = \"The law says I must not harm others.\" → Responsibility exists even without an agreement. Example: You are an engineer hired to design a bridge. You promised in a contract to finish the design by a certain date, but you don't → the client may sue you for breach of contract (breaking your agreement). You make a careless design mistake, and the bridge has problems → the client may sue you for negligence (a tort because you failed to act carefully). The same mistake can sometimes create both types of legal problems at the same time.",
+    ex: "You sign a contract to build a conveyor belt. You carelessly bolt it together, and it explodes, injuring the factory owner. The owner sues you for breach of contract because you broke your voluntary promise to build it properly, AND they sue you in tort for negligence because the law forces you not to blow people up."
+  },
+  {
+    title: "Diagram 9 — NAFTA TN Visa: Right to Work vs Right to Practise",
+    text: "Getting legal permission to enter and work in a country is completely different from getting legal permission to practice engineering (work as a licensed professional engineer who is legally allowed to offer engineering services and approve engineering work). Think of them as two completely separate locked doors. A NAFTA TN Visa (a special work visa created under the former NAFTA trade agreement that allows certain Canadian and Mexican professionals to work in the United States; today it continues under CUSMA/USMCA) is an immigration tool (it only deals with your right to enter and work in the country). It simply means the government allows you to enter the country and work in an eligible job—you won't be refused entry or removed because of your immigration status. However, it gives you zero right to actually practice engineering or stamp a blueprint (place your official Professional Engineer, or P.Eng., seal and signature on engineering drawings, showing you take legal responsibility for the design). To do that, you must first meet the licensing requirements (the education, experience, exams, and other requirements) set by the local engineering licensing board (the government-authorized organization that decides who is legally allowed to practice engineering in that province or state).",
+    ex: "You get a TN Visa to move to Texas. That just means you are allowed to live and work there. If you immediately start offering public engineering services without passing the Texas Board of Professional Engineers licensing exam, you are committing a crime and will be prosecuted."
+  },
+  {
+    title: "Diagram 10 — Decoding a Case Citation",
+    text: "When lawyers reference past cases, they use a specific code to tell you exactly where to find the document. The older style points to a physical book; it lists the year, the volume number, the printed reporting series, and the page number. The newer 'neutral' style points to digital records; it simply lists the year, the specific court, and the chronological decision number for that year. When lawyers talk about past court cases, they use a special citation (a citation is a short code that tells you exactly where to find a court case). There are two common ways to write this code. The older style was made for printed books. It tells you the year the case was decided, the volume (the number of the book), the reporting series (the name of the collection of court decisions), and the page number where the case starts. For example, it is basically like saying: “Look in this book, in this volume, on this page.” The newer neutral citation (a citation designed to work without depending on a printed book) is simpler and works well with digital court records. It tells you the year, the court that decided the case, and the decision number (the number given to that court decision in that year). So, in simple terms: the old style tells you where the case is in a physical book, while the neutral style identifies the case directly by the court, year, and decision number.",
+    ex: "You read a textbook citing '2000 SCC 60'. You don't need to hunt through a physical law library. That simple code tells you it was the 60th decision published digitally by the Supreme Court of Canada in the year 2000, and you can pull it up online instantly."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

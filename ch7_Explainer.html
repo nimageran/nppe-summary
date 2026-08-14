@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 7 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 7 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Kiewit Trap and the Performance-Under-Protest Fix</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 9</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Kiewit Trap and the Performance-Under-Protest Fix",
+    text: "When an owner demands work that you believe is an extra, you face a brutal trap. If you just silently do the work to be a team player, the Supreme Court's Kiewit decision says your silence is an admission that the work was already in your contract. You lose the right to bill for it. To fix this, you must issue a written Notice of Protest, stating you are performing 'without prejudice' to your right to claim extra money later. In provinces like Alberta without a protest statute, you must negotiate this right directly into the contract. Imagine you have a contract (a legal agreement) to build something for an owner (the person or company who hired you). During the project, the owner asks you to do some additional work. You believe this work is an extra (work that was not included in your original contract and should therefore be paid for separately). This creates a dangerous situation. You might think, “I want to be helpful and keep a good relationship, so I will just do the work and discuss the extra payment later.” But this can cause a serious problem. The Kiewit decision (a court decision that explains this rule) says that if you do the extra work without objecting or saying anything, your silence (not saying that you disagree) may be treated as evidence that you accepted the work as part of your original contract. In simple words, the owner could later say, “You did the work without complaining, so you must have agreed that it was already included in the contract.” You may then lose your right to ask for extra money. To protect yourself, you should send a written Notice of Protest (a written message saying that you disagree with the owner's position and want to protect your right to ask for extra payment later). You should clearly say that you are doing the work “without prejudice” (you are doing the work for now, but you are not giving up your right to argue later that the work was extra and that you should be paid more). In Alberta, however, there is an additional problem. Alberta does not have a specific protest statute (a law that automatically gives you a formal right to protect your claim by protesting). Therefore, you should try to put this protection directly into the contract (the agreement you sign before the work starts). The contract should explain how you can object to extra work and protect your right to request additional payment later. The simple lesson is: If you believe the owner is asking for extra work, do not silently do the work and hope to discuss the money later. Clearly put your objection in writing and protect your right to claim extra payment.",
+    ex: "The owner points to a steel beam and says 'paint it.' You think painting is extra. If you just grab a brush, the court says you admitted it was part of your original job. You must email the owner saying 'I am painting this under protest and reserving my right to bill you' before you open the paint can."
+  },
+  {
+    title: "Diagram 2 — The Three Limitations on Damages",
+    text: "Even if you win a breach of contract lawsuit, the court will filter your damages through three strict gates. First is Mitigation: did you try to reduce the bleeding? If you sat around doing nothing, your payout drops. Second is Speculation: can you mathematically prove the loss, or are you just guessing? Third is Remoteness: was this bizarre financial chain reaction actually foreseeable to the other guy when you signed the deal? If you fail any gate, that chunk of money is denied. Even if you win a breach of contract lawsuit (a legal case where you claim that another person or company did not follow the agreement they promised to follow), the court does not automatically give you all the money you ask for. The court checks your damages (the money you claim you lost because of the broken agreement) using three important tests. The first test is mitigation (trying to reduce your losses after the problem happens). The court asks: \"Did you try to make the situation better and stop the loss from becoming bigger?\" For example, if someone breaks a contract with you and you could easily find another solution but choose to do nothing, the court may reduce the money you receive. The second test is speculation (a loss that is only a guess and cannot be clearly proven). The court asks: \"Can you show real evidence and calculations for this loss, or are you just estimating?\" If you cannot prove the amount of money you lost, the court may refuse to give you that money. The third test is remoteness (whether the loss was too far away or unexpected to reasonably predict). The court asks: \"When the contract was made, could the other person reasonably expect that this type of loss would happen?\" If the loss comes from a strange or unexpected chain of events that the other person could not have known about, the court may not make them pay for it. In simple words: winning the case does not mean you get everything you ask for. Your compensation (money paid to cover your loss) must pass three checks: you tried to reduce the damage, you can prove the amount, and the loss was something that could reasonably be expected. If your claim fails any one of these checks, that part of the money may be taken away.",
+    ex: "A supplier is a week late delivering steel. You rent a crane for an extra week—that passes all three filters, and you get paid for the rental. But you also claim the delay caused you to miss a bid for a mega-project in Dubai and forced you into bankruptcy. The judge throws out the mega-project claim because it is highly speculative and far too remote for the supplier to have foreseen."
+  },
+  {
+    title: "Diagram 3 — Consequential Damages: The Pricing Problem",
+    text: "Exclusion clauses that ban 'consequential damages' exist for pure economic efficiency. If a cheap, five-dollar part fails and causes a million-dollar factory shutdown, forcing the manufacturer to absorb that million-dollar risk would require them to price the five-dollar part at a hundred thousand dollars. Instead, the buyer accepts the massive downtime risk via an exclusion clause, keeping the part cheap and putting the risk on the party best able to monitor it. An exclusion clause (a contract rule that says certain losses will not be paid for) can be used to decide who takes the risk if something goes very wrong. Imagine you buy a $5 part for a factory. The part breaks, and because of that, the entire factory stops working for a day. You might lose $1 million because the factory cannot operate. That $1 million is a consequential damage (a large loss that happens because of the original problem, rather than being the direct cost of the broken part). The manufacturer might say: \"We cannot sell you a $5 part if we also have to risk paying $1 million if it causes a bigger problem.\" If the manufacturer had to accept that risk every time, they might have to charge much more for the part. Instead, the contract can have an exclusion clause saying: \"If our $5 part causes your factory to shut down, we will replace the part, but we will not pay for the $1 million you lose because your factory stopped.\" The buyer accepts this risk because the buyer may be in a better position to monitor the factory, have backup parts, or buy insurance. So the part can remain cheap, while the contract clearly says who is responsible for the big risk. In very simple terms: The $5 part is cheap because the manufacturer is not also taking responsibility for the potentially huge losses that could happen if the part fails.",
+    ex: "You manufacture a $50 pump valve. If it breaks, a petroleum refinery shuts down, costing $5 million a day. If you don't use a consequential damages exclusion, you'd go bankrupt selling one valve. With the exclusion, the refinery accepts the risk of their own downtime, and you just owe them a new $50 valve."
+  },
+  {
+    title: "Diagram 4 — Liquidated Damages vs Penalty",
+    text: "If a contract charges a massive daily fee for being late, it is only legally enforceable if it is a genuine, mathematical pre-estimate of actual loss, called Liquidated Damages. If the number was just pulled out of thin air to terrify the contractor into working faster, the court classifies it as an illegal Penalty and will strike it down. Also, a myth says you must include a bonus clause for early completion to make liquidated damages legal. That is totally false. Sometimes, a contract (a legal agreement between two or more people or companies) says that if one side is late, they must pay a large amount of money every day. This daily payment is only allowed by law if it is a fair estimate of the real damage caused by the delay. This type of payment is called liquidated damages (a specific amount of money that both sides agree on in advance to cover a possible loss if something goes wrong). For example, imagine a company hires a contractor (a person or company hired to complete a job) to build a machine, and they agree that being one day late will probably cost the company about $1,000 because of lost production. They can include a contract term saying the contractor must pay $1,000 per late day. This is likely acceptable because the amount is based on a reasonable estimate of the actual loss. However, if the company writes in the contract that the contractor must pay $50,000 every day for being late, just to scare the contractor into finishing faster, the amount is not a real estimate of the loss. This is called a penalty (a punishment designed to force someone to follow the contract rather than compensate for a real loss). Courts usually will not enforce penalties and may remove that part of the contract. A common misunderstanding is that a contract must include a bonus clause (a part of the contract that gives extra money as a reward) for finishing early in order for liquidated damages to be valid. This is completely false. A contract does not need an early-completion bonus. The only important question is whether the late-payment amount is a reasonable estimate of the actual damage, not whether the contractor can earn extra money for finishing early.",
+    ex: "You are building a toll bridge. The owner calculates they will lose exactly $10,000 a day in toll fees if you are late. Setting the late fee at $10,000 a day is a legal Liquidated Damage. If the owner sets the fee at $500,000 a day just to punish you, the judge will tear up the clause as an illegal penalty."
+  },
+  {
+    title: "Diagram 5 — Fundamental Breach vs Simple Breach: The High-Stakes Fork",
+    text: "A fundamental breach strikes at the very root of the contract, giving you the right to terminate the deal and walk away. A simple breach is a minor issue where you can only sue for damages, but you must keep working. If you get mad over a simple breach and wrongly terminate the contract, you trigger a catastrophic role reversal. By walking away illegally, YOU have just committed a fundamental breach, and the other guy can sue you for millions. A breach of contract (when someone does not do what they promised to do in a contract) can be either fundamental or simple. A fundamental breach (a very serious failure that destroys the main purpose of the contract) is so serious that the other person can terminate the contract (officially end the contract) and walk away. For example, if you hire a company to build you a house but they completely stop working, that could be a fundamental breach. A simple breach (a smaller problem that does not destroy the whole purpose of the contract) is different. In that situation, you usually cannot terminate the contract. You must continue doing what you promised to do, but you can sue for damages (ask the court for money to compensate you for the loss caused by the breach). The dangerous part is this: if you become angry about a simple breach and wrongly decide to terminate the contract, you may become the person who has seriously broken the contract. In other words, you can accidentally change the situation from \"they broke the contract\" to \"you broke the contract by walking away.\" Then the other person may be able to sue you for a very large amount of money.",
+    ex: "An owner is one day late paying a minor $500 invoice. You furiously declare a fundamental breach and walk your entire crew off a $10 million skyscraper project. The judge rules that a one-day delay was only a simple breach. By walking off the job, YOU committed the fundamental breach, and you now owe the owner millions for abandoning the site."
+  },
+  {
+    title: "Diagram 6 — Repudiation and Anticipatory Breach: Timing on a Line",
+    text: "These overlap but deal with timing. Anticipatory breach happens strictly before the deadline arrives—someone announces early that they will not perform. Repudiation is broader; it means showing by words or actions that you intend to abandon the contract completely, which can happen before or during the deadline. An anticipatory breach of a massive, core requirement is automatically a repudiation, allowing the victim to terminate immediately instead of waiting for the deadline to pass. Anticipatory breach (when someone tells you before the deadline that they will not do what they promised to do) and repudiation (when someone shows, through their words or actions, that they no longer want to follow the contract) are similar, but there is an important difference in timing. An anticipatory breach happens before the deadline. For example, if I promise to deliver your furniture on Friday, but on Wednesday I tell you, \"I'm not going to deliver it,\" that is an anticipatory breach. Repudiation is a broader idea. It means showing that you are walking away from the contract (you no longer intend to do what you promised). This can happen before or during the time you were supposed to perform. If someone refuses to do something that is a major part of the contract (something very important to the whole deal), that anticipatory breach is also considered a repudiation. In that situation, the other person does not have to wait until the deadline. They can terminate the contract (legally end the contract) immediately. Example: Imagine you hire a contractor (a person hired to do a job) to build your house by August 30. 1. Anticipatory breach On August 20, the contractor tells you: \"I'm not going to build your house. I changed my mind.\" The deadline is August 30, but the contractor has already told you before the deadline that they will not perform. ➡️ This is an anticipatory breach (refusing to perform before the deadline). 2. Repudiation: Now imagine the contractor says: \"I'm not going to build your house, and I don't care about this contract anymore. I'm done with it.\" This shows that the contractor intends to abandon the contract (completely walk away from the agreement). ➡️ This is repudiation (showing through words or actions that you no longer intend to follow the contract). And because the contractor is abandoning such an important part of the contract—the entire house—you don't have to wait until August 30. You can terminate the contract (legally end the contract) immediately. The easiest way to remember it: Anticipatory breach = \"I won't do it when the time comes.\" Repudiation = \"I'm walking away from this contract.\" And they can happen at the same time: \"I won't build your house, and I'm walking away from our contract.\" That's both anticipatory breach AND repudiation.",
+    ex: "You are hired to pour concrete on Friday. On Monday, the contractor emails you saying, 'We are bankrupt and never coming to the site.' This is an anticipatory breach AND a repudiation. You do not have to wait around until Friday to see if they show up; you can legally fire them on Monday and hire a replacement."
+  },
+  {
+    title: "Diagram 7 — The Termination Decision Tree",
+    text: "Deciding if you can terminate requires a strict procedural checklist. If the contract has a termination clause, you absolutely must follow its exact notice periods and cure windows, or your termination is illegal. If there is no clause, you must rely on proving a fundamental breach occurred at common law. Alternatively, a 'termination for convenience' clause lets an owner fire you for no reason at all, but they usually have to pay you a massive exit fee or your lost profits. Before you terminate a contract (end the contract before it was supposed to end), you need to follow some specific rules. First, check whether the contract has a termination clause (a section of the contract that explains when and how one side can end the contract). If it does, you must carefully follow its rules, including the notice period (how much advance warning you must give) and the cure period/window (the amount of time you must give the other side to fix their mistake). If you do not follow these rules, your termination may be illegal (the law may treat your attempt to end the contract as invalid). If the contract has no termination clause, you normally need to show that the other side committed a fundamental breach (a very serious failure to follow the contract that is serious enough to allow you to end the contract). There is also something called termination for convenience (a rule in the contract that allows one side, usually the owner, to end the contract even when the other side did nothing wrong). However, the owner may still have to pay the other side compensation (money paid to cover the loss), such as lost profits (money the other side expected to earn from finishing the contract).",
+    ex: "Your contract says you can terminate a bad subcontractor, but you must give them 7 days' written notice to fix their mistake. The sub installs a crooked pipe. You get angry and fire them on the spot. You just breached the contract because you skipped the mandatory 7-day cure window. Your righteous termination is now legally wrongful."
+  },
+  {
+    title: "Diagram 8 — Cost of Performance vs Diminution in Value",
+    text: "When a contractor builds something slightly wrong, the owner demands the cost to rip it down and rebuild it perfectly. The contractor argues they should only pay the tiny drop in property value. The court's true deciding factor is whether the owner actually intends to do the repair, and if the massive cost of repair is reasonable. Courts will not award a massive repair check if they know the owner just wants to pocket the cash as a windfall and live with the slight defect. Imagine a contractor (a person or company hired to build something) builds a house, but makes a small mistake. The owner wants the contractor to tear it down and rebuild it correctly, which would cost a lot of money. The contractor says, \"The mistake is very small. The house is still almost as valuable as it should be, so I should only pay for that small loss in value.\" The court then looks at an important question: Does the owner actually plan to fix the mistake? The court also asks whether the cost of fixing it is reasonable (reasonable means fair and makes sense considering the problem). If the owner really plans to fix the problem and the cost is reasonable, the owner may receive the money needed to fix it. But if the owner has no intention of fixing it and simply wants to take the large amount of money and keep living with the small mistake, the court will usually not give them that large amount. Otherwise, the owner would get a windfall (extra money they did not really need for the repair) and would unfairly make money from the contractor's mistake.",
+    ex: "A contractor pours a warehouse floor 4 inches thick instead of 5 inches. It costs $1 million to rip it out and replace it, but the property value only dropped by $10,000, and the warehouse still perfectly supports the forklifts. Because spending $1 million to fix a functional floor is absurd, the judge denies the repair cost to prevent a windfall, and just awards the $10,000 loss in value."
+  },
+  {
+    title: "Diagram 9 — Chapter Question 1: The Waiver-Within-a-Breach Trap",
+    text: "When dealing with a missed deadline, entertaining excuses can accidentally destroy your rights. If the other side commits a fundamental breach by missing a noon deadline, and you threaten to quit but stay around arguing until 4 PM, you have legally waived the original noon deadline. By not enforcing the execution instantly, you effectively reset the clock. You cannot later sue them for missing the noon deadline when you implicitly agreed to keep negotiating. When the other person misses a deadline (the time by which they were supposed to finish something), you need to be careful about how you respond. Imagine they were supposed to finish something by noon (12 PM), but they don't. This could be a fundamental breach (a serious failure to do what they promised in a contract). You tell them, \"If you don't finish, I'm going to quit the contract,\" but instead of actually ending things at noon, you stay and keep talking and negotiating with them until 4 PM. By doing this, you may have waived your right to complain about the original noon deadline (waived means you gave up your right to use that deadline against them). In simple terms, your actions can make it look like you agreed to give them more time. So later, you may not be able to sue (take legal action against them) by saying, \"You missed the noon deadline!\" because you stayed, kept negotiating, and acted as if the contract could continue.",
+    ex: "The client misses a massive payment at noon. You threaten to pack up your surveying gear and leave. Instead of leaving, you stay in the trailer arguing with them until 4 PM, when they finally hand you a check. If you try to quit at 4:30 PM claiming they fundamentally breached the noon deadline, the judge will laugh at you. Your lingering presence waived the noon deadline entirely."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

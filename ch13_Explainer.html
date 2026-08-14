@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 13 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 13 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — Concurrent Liability</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 9</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — Concurrent Liability: Why a Contract Doesn't Block a Tort Claim",
+    text: "In the past, if you had a contract with a client, they could only sue you for breaching that exact contract. They could not sue you in tort. A major Supreme Court case called Central Trust versus Rafuse changed the rules entirely. Now, a client can sue you in both contract and tort at the exact same time. The only guardrail protecting you is that a client cannot use a tort claim to completely bypass or rewrite what the contract specifically says. However, if the contract is silent on an issue, the court will fill that gap by imposing a tort duty of care. Of course, Nima. Here is the same idea with the difficult legal words explained immediately: In the past, if you had a contract (a legally enforceable agreement between two or more people or businesses) with a client (the person or company that hired you), the client could only sue you for breach of contract (not doing what you promised to do in the agreement). The client could not also sue you under tort law (a different area of law that deals with harm caused by someone's careless or wrongful actions). A major Supreme Court case called Central Trust v. Rafuse changed this rule. Now, a client can sometimes sue you for both breach of contract and tort at the same time. However, there is an important limit. If you and another person have a contract (a written or spoken agreement that creates promises between people), you generally cannot use a tort claim (a legal claim saying that someone harmed you by breaking a general legal responsibility) just to avoid the specific rules you already agreed to in the contract. For example, if the contract clearly says, \"The company is responsible for damage only up to $10,000,\" you usually cannot simply ignore that rule and say, \"I will sue them under tort law instead, so I can get more money.\" However, if the contract is silent (does not say anything) about a particular situation, the court may still decide that the other person had a duty of care (a legal responsibility to act carefully and avoid causing harm to you). Imagine you sign a contract with a company, but the contract does not say what the company must do if a certain safety problem occurs. If the company acts carelessly and you are harmed, a court might still decide that the company had a duty of care. In other words, the company may have had a legal responsibility to act safely even though the contract did not mention that exact situation. In simple terms: a contract controls the things the parties clearly agreed about, but the law may fill in the empty spaces when the contract says nothing about a particular problem. In very simple terms: the contract sets the rules where it has clearly spoken, but tort law can help fill in the missing rules when the contract is silent.",
+    ex: "You sign a contract to design a bridge, but you forget to include a clause limiting your financial liability. If the bridge falls, the client can sue you in tort for negligence, and you cannot hide behind the contract because it was totally silent on the liability limit."
+  },
+  {
+    title: "Diagram 2 — The Discoverability Clock",
+    text: "A limitation period is a legal stopwatch dictating how long someone has to sue you. If a defect is patent, meaning it is obvious to anyone who looks, the stopwatch starts ticking the moment the work is finished. But if a defect is latent, meaning it is hidden deep inside a wall or underground, the stopwatch sits completely frozen. Under the Kamloops rule, it only starts ticking when the client actually discovers the damage, or when a reasonable person ought to have discovered it. However, to prevent infinite liability, the government imposes an ultimate limitation period. This is an absolute cutoff, usually ten to fifteen years after the work was done, which kills the lawsuit no matter when the defect was discovered. A limitation period is a legal time limit for starting a lawsuit. Think of it like a legal stopwatch: once the time runs out, you may lose the right to sue. If a defect (a problem or mistake in something that was built or done) is patent (easy to see or notice), the stopwatch starts when the work is finished. For example, if a wall is clearly cracked when the construction is completed, the time limit starts at that point. But if the defect is latent (hidden and not easy to see), such as a serious problem inside a wall or underground, the stopwatch usually does not start when the work is finished. Under the Kamloops rule (a legal rule about when the time limit starts), the stopwatch starts when the client actually discovers the problem, or when they should reasonably have discovered it (even if they did not actually notice it). However, the law also creates an ultimate limitation period (an absolute final deadline for starting a lawsuit). This means that even if a hidden defect is discovered many years later, there is a final cutoff—often around 10 to 15 years after the work was completed. Once this final deadline passes, the lawsuit is no longer allowed, no matter when the defect was discovered.",
+    ex: "You design a faulty underground pipe in 2010. The client doesn't see a leak until 2025. The standard 2-year clock starts in 2025 because it was a hidden latent defect. But if your province has a 10-year ultimate limitation period, the claim died in 2020. The client is legally blocked from suing you."
+  },
+  {
+    title: "Diagram 3 — The Limitation Period Decision Tree",
+    text: "When figuring out if a lawsuit is still alive, you must run it through three strict gates. Gate 1 asks if the defect was obvious or hidden, to find out exactly when the clock started. Gate 2 checks if the standard limitation period, like two years, has expired since that specific start date. If it hasn't, the claim is still alive. But Gate 3 is the ultimate override. It checks if the ultimate statutory limitation period has expired since the day the work was physically done. If Gate 3 is expired, the lawsuit dies instantly, regardless of what the other gates said. When deciding whether someone can still bring a lawsuit (a legal case where one person or company asks a court to solve a problem), you need to check three important rules, like passing through three locked doors. The first rule asks: was the problem obvious or hidden? (Obvious means a person could clearly see the problem right away. Hidden means the problem was not noticeable and was discovered later.) This helps determine when the legal clock starts (the time period allowed for starting a lawsuit begins counting). The second rule checks the normal limitation period (a legal time limit for starting a lawsuit, often a specific number of years, such as two years). You count this time from the date when the clock started. If this time limit has not passed, the lawsuit is still allowed to continue. The third rule is the strongest rule and can override the others. It checks the ultimate limitation period (a final maximum time limit set by law, after which a lawsuit cannot be started no matter what). This clock usually starts from the day the work, action, or event actually happened—not from when the problem was discovered. If this final deadline has passed, the lawsuit is automatically finished, even if the problem was hidden and even if the normal limitation period has not expired yet. In simple words: first find when the clock starts, then check the normal deadline, but always check the final deadline, because once that final deadline is over, the lawsuit is dead.",
+    ex: "A client discovers a hidden roof defect three months ago and tries to sue you immediately. Gate 1 and 2 say the lawsuit is alive because they just found it. But if you built that roof 16 years ago, and the ultimate limitation period in your province is 15 years, Gate 3 slams shut and the lawsuit is dismissed."
+  },
+  {
+    title: "Diagram 4 — The Three Protections Against Indefinite Liability",
+    text: "Hidden defects (problems that are not visible or known when the work is finished) can cause a lawsuit (a legal case brought to court) many years later—even decades later. Because of this, professionals use three ways to limit their legal risk (reduce how much they could be responsible for). Tool 1: Put a shorter time limit in the contract. For example, the contract might say, \"You can only make a legal claim against me within 2 years.\" This is called a limitation period (the amount of time someone has to start a legal claim). Tool 2: Put a limit on how much money you could owe. For example, the contract might say, \"If something goes wrong, the most I will pay is the amount my insurance covers.\" This is called limiting liability (putting a maximum amount on the money you may have to pay if you are legally responsible). Tool 3: Follow the ultimate limitation period set by law. This is a maximum time limit created by legislation (a law made by the government). It applies automatically, even if the contract says nothing about it. The important part: Tools 1 and 2 do not happen automatically. The parties must negotiate them (discuss and agree on them) and write them into the contract. However, there is an important exception: in some provinces, the law does not allow you to contract out (use a contract to avoid or change a legal rule) of the statutory limitation period. In other words, you cannot simply write, \"The legal time limit is shorter,\" if the law says you are not allowed to do that.",
+    ex: "You write a contract saying the client only has 1 year to sue you after a project ends, using Tool 1. But if the local provincial law explicitly says you cannot shorten the statutory 2-year limit, the judge will throw your clause in the trash and the client gets the full 2 years."
+  },
+  {
+    title: "Diagram 5 — The Joint and Several Liability Cash-Flow Disaster",
+    text: "Joint and several liability is a terrifying financial trap for engineers. If a court decides an engineer is 30 percent at fault for a collapse, and the contractor is 70 percent at fault, the client does not have to split the bill. The client is legally allowed to force the engineer to pay 100 percent of the damages. The engineer is then forced to chase the contractor to get the 70 percent back. If the contractor goes bankrupt, the engineer is completely stuck paying the full bill for a mistake they only partially caused. Joint and several liability (a legal rule where more than one person or company can be responsible for the same damage, and the person who suffered the damage can choose who pays) can create a serious financial risk for engineers. Imagine an engineer and a contractor (the person or company hired to build or complete the work) both make mistakes that cause a building to collapse. A court (a legal authority that decides who is responsible) may decide that the engineer caused 30% of the problem and the contractor caused 70% of the problem. However, under joint and several liability, the client (the person or company who hired the engineer and contractor) does not have to collect 30% from the engineer and 70% from the contractor. The client can ask the engineer to pay 100% of the damage if the engineer is able to pay. After paying, the engineer can try to get the contractor to pay back their 70% share. This process is called seeking recovery (trying to get money back from someone who was also responsible). The problem is that if the contractor has no money or goes bankrupt (a legal situation where a person or company cannot pay their debts), the engineer may never get that money back. The engineer could end up paying the entire cost, even though they were only partly responsible for causing the damage. Simple example: Imagine a building repair costs $100,000. Engineer's fault: 30% → $30,000 Contractor's fault: 70% → $70,000 Normally, you might think: \"The engineer pays $30,000, and the contractor pays $70,000.\" But with joint and several liability, the client can say: \"Engineer, I want the full $100,000 from you.\" The engineer pays $100,000 and then tries to get $70,000 from the contractor. If the contractor has disappeared or has no money, the engineer loses that $70,000. The main idea to remember for NPPE: Joint and several liability means that even if you are only partly responsible for damage, you may have to pay the entire amount first if the other responsible party cannot pay. Then you must try to recover the other person's share yourself.",
+    ex: "You make a minor design error worth 10 percent of the blame, and the builder makes a massive pouring error worth 90 percent. The building collapses causing ten million dollars in damage. The builder goes bankrupt. Under joint and several liability, the owner can force you to pay the entire ten million dollars yourself."
+  },
+  {
+    title: "Diagram 6 — Contributory Negligence: The Switch That Changes Everything",
+    text: "Of course, Nima. The confusion is mainly because contributory negligence, joint and several liability, and several liability are three different ideas that interact with each other. Let's separate them completely. 1. Contributory negligence Simple meaning Contributory negligence = the injured person is partly responsible for their own damage. Example Imagine a building owner hires Company A to repair the roof. Company A does a bad job, but the owner also ignores a serious warning that the roof is unsafe. Later, the roof collapses. The court decides: Company A = 99% responsible Owner = 1% responsible That 1% responsibility of the owner is contributory negligence. Think: \"You were injured, but you also helped cause your own injury.\" 2. Joint and several liability This is a different concept. Simple meaning Joint and several liability = the injured person can collect the entire amount from any one responsible defendant. Let's forget contributory negligence for a moment. Imagine: Company A = 50% responsible Company B = 30% responsible Company C = 20% responsible Total damage = $1,000,000 Under joint and several liability, the injured person may be able to say: \"Company A, I want my entire $1 million from you.\" Even though Company A was only 50% responsible. So Company A may have to pay the injured person: $1,000,000 Then Company A can try to recover money from B and C. Why does the law do this? Because the injured person should not necessarily suffer just because one of the responsible companies cannot pay. For example: A owes $500,000 B owes $300,000 C owes $200,000 But B goes bankrupt. Under joint and several liability, the injured person may still be able to recover the full $1 million from A and/or C, depending on the applicable law. So remember: Joint and several = \"I can go after one defendant for the whole amount.\" 3. Several liability Now we completely change the rule. Simple meaning Several liability = each defendant pays only their own percentage of responsibility. Use the same $1 million accident: Company A = 50% Company B = 30% Company C = 20% Therefore: Company Responsibility Pays A 50% $500,000 B 30% $300,000 C 20% $200,000 Total 100% $1,000,000 Company A cannot normally be forced to pay B's or C's share. Think: Several liability = \"You pay your share, and I pay mine.\" 4. What happens if Company B goes bankrupt? This is where the difference becomes very important. Suppose: A = 50% → $500,000 B = 30% → $300,000 C = 20% → $200,000 But Company B goes bankrupt and cannot pay its $300,000. Under several liability: A still pays $500,000 C still pays $200,000 B pays $0 The injured person may lose the $300,000 that B couldn't pay. A does not suddenly have to pay $800,000. That's the key idea. 5. Now put contributory negligence into the picture This is the part that was probably confusing you. Imagine the owner is also responsible for 1%. The companies are: Company A = 50% Company B = 30% Company C = 19% Owner = 1% Total = 100% Now, in a province where the applicable contributory-negligence rule removes joint and several liability when the plaintiff/owner is partly at fault, the system can move to several liability. So: Owner's 1% fault → joint & several liability may no longer apply → several liability applies. Now everyone pays their own share. For a $1 million loss: A → $500,000 B → $300,000 C → $190,000 Owner → $10,000 6. The easiest way to remember all three Think about a $1 million accident. Contributory negligence \"The injured person was partly responsible too.\" Example: Owner = 1% responsible. Joint and several liability \"One defendant can potentially be forced to pay the whole amount.\" Example: A is only 50% responsible, but the injured person may be able to collect $1 million from A. Several liability \"Everyone pays only their own percentage.\" Example: A = 50% → $500,000 B = 30% → $300,000 C = 20% → $200,000 🧠 NPPE memory trick Remember this chain: Owner did something wrong → Contributory negligence ⬇️ Joint & several may disappear ⬇️ Several liability ⬇️ Everyone pays only their own share ⬇️ If one defendant can't pay → the others don't normally cover that missing share. One important caution: the exact effect of contributory negligence differs by province and statute, so for an NPPE question, always follow the rule stated in the question or the applicable provincial legislation.",
+    ex: "Using the previous example where the builder goes bankrupt. If the court finds the owner was 1 percent at fault for rushing the schedule, joint and several liability turns off. You only pay your 10 percent share, which is one million dollars, and the owner is forced to eat the bankrupt builder's nine million dollar share."
+  },
+  {
+    title: "Diagram 7 — The Vicarious Liability Boundary",
+    text: "Employers are vicariously liable for the mistakes of their employees, but only within a strict boundary called the course and scope of employment. If you make a negligent mistake while doing your assigned job, the employer pays the victim. But if you step outside that boundary—like doing private side-jobs or acting recklessly off the clock—the employer is completely protected. You become personally liable, and the employer's insurance will not protect you. An employer (the person or company you work for) can sometimes be legally responsible for a mistake made by an employee (a person who works for the employer). This is called vicarious liability (a legal rule that can make one person or company responsible for another person's mistake). However, this only applies when the employee is acting within the course and scope of employment (the normal work-related activities and responsibilities of the job). For example, if you are delivering a package for your employer and you carelessly hit someone with the company vehicle, your employer may be responsible for the damage. But if you go outside your work responsibilities—for example, you use the company vehicle to do a private job for yourself, or you do something extremely reckless when you are not working—the employer may not be responsible. In that situation, you may be personally liable (you may have to pay for the harm yourself), and the employer's insurance (financial protection that may pay for certain accidents or damage) may not cover you.",
+    ex: "You use your company laptop on a Sunday to design a retaining wall for your neighbor's cash-only backyard project. The wall collapses. Because you did this outside your scope of employment, your engineering firm is completely safe, and the neighbor will sue you personally for everything you own."
+  },
+  {
+    title: "Diagram 8 — Codes as a Floor, Not a Ceiling",
+    text: "Engineering codes and standards are the absolute minimum legal floor; they are never the ceiling. Legislated codes are mandatory for everyone. Contractual codes are mandatory only because you signed the deal. Voluntary industry guidelines are technically not mandatory, but courts use them as the baseline anyway. You are always allowed to use your professional judgment to design above the code. But if you design below the code, courts will automatically presume you were negligent unless you can prove an incredibly good reason. Engineering codes and standards (rules and technical requirements that explain how engineering work should be done) are usually the minimum level of safety and quality you must meet. Think of them like the lowest acceptable line—not the highest level you are allowed to reach. In other words, a code tells you, “You must do at least this much,” not “You are not allowed to do more.” Some codes are legislated codes (rules created by the government and made into law). These are mandatory for everyone who is covered by the law. Other requirements may be contractual codes (requirements that you agreed to follow when you signed a contract). These may not be laws for everyone, but they become mandatory for you because you agreed to them in your contract. There are also voluntary industry guidelines (recommendations created by professional organizations or people in an industry). Technically, you may not be legally required to follow them. However, if something goes wrong, a court (the legal system that decides disputes) may look at these guidelines to decide what a reasonably careful engineer should have done. You are always allowed to use your professional judgment (your knowledge and experience as an engineer) to design something that is better or safer than the code requires. However, designing below the code's requirements is dangerous. If you do this and something goes wrong, the court may assume that you were negligent (you failed to act as a reasonably careful engineer would). You may then need to prove that you had a very strong and reasonable explanation for not following the code.",
+    ex: "The building code requires a roof to hold 40 pounds of snow. You use your judgment and design it for 60 pounds. That is perfectly legal. But if you design it for 30 pounds to save money, and it caves in, the court will instantly presume you are guilty of negligence because you dropped below the minimum floor."
+  },
+  {
+    title: "Diagram 9 — The Code-Compliance Liability Matrix",
+    text: "Many engineers falsely believe that if they follow the building code perfectly, they cannot be sued. This is wrong. You can follow the code perfectly and still be found liable in four specific situations. First, if you actually knew the code was outdated. Second, if you should have known the code was bad because of recent industry accidents. Third, if the entire industry standard is proven to be careless. And fourth, if you are creating a leading-edge design where old codes do not apply, requiring you to get informed consent from the client. Many engineers incorrectly think that following the building code (a set of official rules and minimum requirements for designing and constructing buildings) means they can never be sued (taken to court because someone believes they caused harm). This is not true. Following the code is important, but it does not automatically protect an engineer from legal responsibility (liability means being legally responsible for damage, injury, or loss). An engineer can still be found liable in four situations. The first situation is when the engineer actually knew that the code was outdated (the engineer was aware that the rules were old and no longer safe or suitable), but they followed it anyway. The second situation is when the engineer should have known the code was not good enough. This means that even if the engineer did not personally know, a reasonable engineer in the same situation would have noticed the problem—for example, because recent accidents or failures showed that the old rules were unsafe. The third situation is when the industry standard (the common practices and methods normally followed by engineers in that field) is itself careless or unsafe. Engineers cannot avoid responsibility by saying, \"Everyone in the industry does it this way,\" if the usual practice is proven to be dangerous. The fourth situation is when an engineer creates a leading-edge design (a new, advanced, or experimental design that goes beyond normal methods). In this case, old building codes may not fully cover the risks. The engineer may need informed consent (the client clearly understands the possible risks, benefits, and uncertainties, and agrees to continue) before moving forward. The main idea is: A building code is a minimum safety guide, not a guarantee that an engineer has done everything necessary. Engineers must also use professional judgment and consider new risks, even when they follow the written rules.",
+    ex: "You design a balcony exactly to the 2025 building code. However, you read an engineering journal last month that proved the 2025 code calculations are dangerously flawed and cause balconies to crack. If you blindly follow the code anyway and the balcony falls, you are liable because you had actual knowledge the code was inadequate."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

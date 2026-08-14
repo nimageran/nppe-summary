@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 17 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 17 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Three-Party Structure</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 10</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Three-Party Structure and Two Separate Agreements",
+    text: "A bond (a legal promise that protects one person or company if another person or company fails to do what they promised) involves three parties (three different people or companies). The first is the principal (the person or company that makes the original promise to complete the work). The second is the obligee (the person or company who wants protection and will receive help if the promise is not completed; for example, a project owner). The third is the surety (a company, usually an insurance or bonding company, that promises to pay if the principal fails to do their job). A simple way to imagine a bond is like a co-signer (someone who agrees to pay if another person fails to pay) on a loan. The surety is saying: \"If this person or company does not complete their promise, I will cover the loss.\" However, if the surety has to pay money because the principal failed, the surety will usually go back to the principal and ask for that money back. A bond is not one big three-person contract. Instead, it is made of two separate agreements. The first agreement is the main contract (the original agreement between the contractor and the owner that explains what work must be done). The second agreement is the bond agreement (the separate promise made by the surety to protect the owner if the contractor fails). The surety's promise is secondary (it only becomes important after the main contract has been broken). Interestingly, the contractor usually pays for the bond (called a premium, meaning the fee paid to get the bond). This means the owner gets protection, but the cost of that protection is included in the contractor's price and is indirectly paid through the project cost.",
+    ex: "You hire a contractor to build a warehouse. Contract 1 is their promise to build it. Contract 2 is a bond company promising to finish it if the contractor runs away. If the contractor builds it perfectly, Contract 2 sits in a drawer and does absolutely nothing."
+  },
+  {
+    title: "Diagram 2 — Bond vs Insurance: Why a Bond Is Not Insurance",
+    text: "People often confuse bonds and insurance because both can help cover a financial loss, but they work in very different ways. Insurance is an agreement between two parties (two sides): the insured (the person or company buying protection) and the insurer (the insurance company providing protection). If something bad happens and the insurer pays for the loss, the insurer usually does not expect the insured person to pay that money back. A bond is different because it involves three parties: the principal (the person or company who must complete a job or promise), the obligee (the person or company who wants protection that the promise will be completed), and the surety (the company that promises to pay if the principal fails). A bond also usually requires the original bond document (the official paper that proves the bond exists) to make a claim. The biggest difference is that a surety expects to get its money back. A bond is more like having a bank co-sign your loan. If you fail to pay your loan and the bank pays for you, the bank does not simply accept the loss—it comes back to you and asks you to repay the money. In the same way, if a surety pays money because the principal failed to do their job, the surety can ask the principal to pay that money back.",
+    ex: "If your car insurance pays for a crash, they do not ask you to refund the payout. But if a surety bond pays an owner a million dollars because your construction firm failed, the surety will aggressively sue your firm to get that million dollars back."
+  },
+  {
+    title: "Diagram 3 — Surety's Recourse After Paying Out: Two Parallel Tracks",
+    text: "When a surety (a company that promises to pay if another person or company fails to do something, such as completing a construction project) pays money because of a bond (a legal promise that protects one party if another party does not meet their responsibility), the surety has two possible ways to try to get that money back. The first way is called subrogation (a legal right where the surety takes the place of the person who suffered the loss and tries to recover money from the person who caused the problem). In simple words, the surety steps into the owner's shoes (meaning the surety gets the same legal rights the owner had) and tries to recover the money from the contractor (the person or company hired to complete the work). For example, if a contractor fails to finish a project and the surety pays the owner to fix the problem, the surety can step into the owner's position and try to recover that money from the contractor. However, if the contractor (the person or company hired to complete the work) is bankrupt (a legal situation where a person or company does not have enough money to pay its debts), this option may not help because the contractor may have no money left to recover. Because of this problem, sureties often use a second method called personal indemnity (a promise that certain people will personally repay the surety if it loses money). Before giving a bond, the surety may ask the contractor's owners or shareholders (people who own part of a company) to sign a personal guarantee (a promise that they will use their own money to repay the debt if the company cannot pay). This allows the surety to seek money directly from the owners' personal assets (things they personally own, such as savings or property) instead of only depending on the bankrupt company. In simple words: subrogation means \"I will go after the company that caused the loss,\" while personal indemnity means \"I can also go after the people who promised to repay me if the company fails.\"",
+    ex: "Your construction company goes bankrupt and abandons a job. The surety pays to finish it. They cannot sue your empty company to get their money back, so they use the personal indemnity agreement you signed to seize your personal house and savings account."
+  },
+  {
+    title: "Diagram 4 — The Bid Bond Defence-Dependency Rule",
+    text: "A surety is the person or company providing the guarantee. A bond is the agreement or financial instrument containing that guarantee. For example, in a surety bond, the principal must perform an obligation, the obligee is protected, and the surety guarantees the principal’s performance. In short: surety = guarantor; bond = guarantee/agreement. For example, a contractor promises to complete a construction project. The project owner requires a bond to protect against the contractor failing to perform. An insurance or surety company acts as the surety. If the contractor defaults, the surety may compensate the owner or help fulfill the contractor’s obligation. The bond is the legal agreement, while the surety is the company backing it. The ultimate rule of bonds is that the surety's position can never be worse than the contractor's position. If an owner makes a claim against the surety, the surety instantly checks to see if the contractor has a valid excuse. If the contractor has a legal defence, like the owner waited too long to sue or the bid was validly revoked, the surety automatically gets to use that exact same defence to avoid paying. The basic rule of a bond (a bond is a promise that one person or company will pay or perform if another person or company fails to do what they promised) is that the surety (the person or company that promises to support the contractor) can never be in a worse legal position than the contractor (the person or company hired to do the work). Imagine that the owner (the person who hired the contractor) asks the surety to pay money because the contractor supposedly did something wrong. The surety first asks: \"Would the contractor actually have to pay?\" If the contractor has a valid legal defence (a legal reason why they do not have to pay), the surety can use that same defence. For example, if the owner waited too long to start a lawsuit, or if the contractor was legally allowed to cancel their bid (an offer to do the work for a certain price), the surety can also say, \"Then I don't have to pay either.\" In simple terms: the surety's responsibility cannot be greater than the contractor's responsibility.",
+    ex: "An owner sues a surety because a contractor refused to honor a bid. The surety investigates and finds out the owner illegally changed the project design after the bid was submitted. Because the contractor has the right to walk away from a changed design, the surety uses that same right to deny the owner's claim and pays nothing."
+  },
+  {
+    title: "Diagram 5 — The Surety's Six Options on Default",
+    text: "When a contractor defaults, the surety has six options, ranging from safe to dangerous. The safest options are paying the face value of the bond or getting new bids, because the surety's financial loss is strictly capped. The most dangerous option is for the surety to step in and complete the work themselves. If they do this, they effectively become the contractor, losing their financial cap and inheriting all open-ended costs and long-term warranty liabilities. When a contractor defaults (the contractor fails to do what they promised to do, such as finishing the construction work), the surety (the company that promised to protect the project owner if the contractor fails) has several possible choices. These choices can be thought of as going from safer to more dangerous for the surety. The safest choices are usually paying the face value of the bond (paying the maximum amount written in the bond) or getting new bids (asking other contractors how much they would charge to finish the work). With these choices, the surety's financial loss is usually limited, or capped (there is a maximum amount the surety may have to pay). The most dangerous choice is for the surety to step in and complete the work itself. In this situation, the surety effectively becomes the new contractor. This means the surety may lose the protection of the financial limit in the bond and become responsible for all the unexpected costs of finishing the project. It may also have to deal with warranty liabilities (legal responsibility for problems with the completed work that appear later). So, in simple terms: the surety is usually safer when it pays money or finds another contractor, but it takes a much bigger financial risk when it personally takes over and finishes the project.",
+    ex: "A contractor walks off a half-finished bridge project. The surety can safely just write a check for the $2 million bond limit and walk away. But if the surety hires their own crews to finish the bridge, and the bridge collapses five years later, the surety is on the hook for a massive lawsuit because they took on the role of the contractor."
+  },
+  {
+    title: "Diagram 6 — Case Study 17.1: Tracing the Money",
+    text: "A bond's face value is just a maximum ceiling; the actual payout is usually much smaller and strictly tied to the real mathematical loss. Furthermore, if a third party's negligence made the loss worse, the surety will hunt them down. In the chapter's case study, a surety lost 1.3 million dollars finishing a job, but discovered that the architect had negligently over-certified the early work, causing the owner to overpay the defaulting contractor. The surety sued the architect directly to recover that specific portion of the loss. A bond (a legal promise that protects someone if another person fails to do what they promised) may show a maximum amount of money that could possibly be paid. This maximum amount is called the face value (the largest amount written on the bond). However, this does not mean that the entire amount will automatically be paid. Usually, the actual payment is based on the real loss (the exact amount of money that was actually lost). For example, if a bond is worth $2 million but the real loss is only $500,000, the payment is normally based on the $500,000 loss, not the full $2 million. Also, if another person or company helped cause the loss through negligence (carelessness or failing to do something properly), the surety (the company that promised to pay or complete the work if the original contractor failed) may try to recover that part of the loss from them. In the case from the chapter, the surety had to spend $1.3 million to finish a construction project after the original contractor defaulted (failed to complete their promised work). Later, the surety discovered that the architect (the professional responsible for designing the project and often checking the work) had been negligent. The architect had incorrectly approved too much of the contractor's early work, so the owner (the person or company paying for the project) paid the contractor more money than the work was actually worth. The surety then sued the architect directly to recover the specific amount of money that the architect's carelessness had caused the surety to lose.",
+    ex: "An architect rubber-stamps an invoice saying a contractor finished 80 percent of a building, when really they only did 50 percent. The contractor takes the money and runs. The surety has to pay to finish the building, but they will actively sue the architect for negligence because the architect's lazy inspection is what improperly drained the project's bank account."
+  },
+  {
+    title: "Diagram 7 — The Volunteer Trap",
+    text: "A surety (a person or company that promises to pay if another person fails to complete their responsibility) must be completely certain that a contractor (the person or company hired to do a construction job or provide a service) has actually defaulted (failed to do what they promised in the contract) before paying any money. For example, imagine a company hires a contractor to build a bridge. A surety promises the company, \"If the contractor does not finish the bridge, I will pay for the problem.\" If the surety becomes worried and pays the company too quickly because they think the contractor did something wrong, they may expect to get that money back later through indemnity (a legal right to get money back from the person who should have been responsible for the loss). However, if a court later decides that the contractor was actually correct and did not break the contract, the surety made a mistake. The law then considers the surety a volunteer (someone who pays money even though they had no legal duty or requirement to pay). A volunteer usually cannot get the money back, because they chose to pay without having a valid legal reason. The main idea is: A surety must carefully check the facts before paying. If they pay too early without being legally required to do so, they may lose the right to recover their money later.",
+    ex: "An owner screams that the contractor abandoned the site, so the surety steps in and spends $100,000 to finish it. Later, a judge rules the contractor legally stopped work because the owner stopped paying invoices. Because the surety paid the $100,000 when they did not legally have to, they are trapped. They cannot force the contractor to pay them back."
+  },
+  {
+    title: "Diagram 8 — The Performance Bond Defence Chain",
+    text: "A performance bond claim must survive a brutal gauntlet of conditions to trigger a payout. If the owner failed to pay the contractor, gave late notice to the surety, overpaid the contractor early, or significantly changed the risk of the project without telling the surety, the claim is dead. The surety is discharged from their obligation because the owner's own sloppy behavior ruined the safety of the bond. A performance bond (a promise from a surety—usually an insurance or bonding company—to help the owner if the contractor fails to properly complete the construction work) does not automatically pay money when something goes wrong. The owner must first meet several important requirements. For example, the owner must pay the contractor as required, tell the surety about the problem on time, and avoid doing things that seriously change the project's risk without telling the surety. If the owner does something wrong—such as not paying the contractor, waiting too long to tell the surety about the problem, paying the contractor too much money too early, or making a major change to the project without informing the surety—the surety may no longer have to pay under the bond. In simple terms, the bond is like a safety net, but the owner must not damage or remove that safety net through their own actions.",
+    ex: "You have a bond to build a two-story school. Halfway through, the owner verbally tells you to add a third story and a swimming pool, completely changing the risk. The owner never tells the surety. If you go bankrupt, the surety will refuse to pay a single dime, arguing that the massive secret changes completely voided their guarantee."
+  },
+  {
+    title: "Diagram 9 — Payment Bond Trust Structure: One-Tier Chain",
+    text: "A Labour and Material Payment Bond ensures subcontractors get paid if the main contractor goes bankrupt. It is structured as a trust, where the owner is the trustee holding the bond for the benefit of the workers. However, standard Canadian bonds only protect a 'one-tier' chain. This means only people who signed a direct contract with the main contractor are protected. Anyone lower down the chain is completely out of luck. Of course, Nima. Here is the same idea using very simple language and explaining the important legal words: A Labour and Material Payment Bond (a bond is a legal promise that helps protect someone if they are not paid) helps make sure that subcontractors (companies or workers hired by the main contractor to do part of the construction work) get paid if the main contractor (the main company responsible for the construction project) goes bankrupt (runs out of money and cannot pay its debts). The bond works somewhat like a trust (something held by one person for the benefit of someone else). The owner (the person or company that owns the construction project) holds the bond for the benefit of the people who should receive payment. However, a standard Canadian bond usually protects only one level of the payment chain. This means that a company or worker is protected only if they have a direct contract (a contract directly signed with) the main contractor. For example, if the main contractor hires a subcontractor, that subcontractor may be protected. But if that subcontractor hires another company or worker to help with the work, that lower-level company or worker may not be protected by the bond. In simple terms: the bond usually protects the people directly connected to the main contractor, but not everyone further down the chain.",
+    ex: "A main contractor goes bankrupt. The electrician, who was hired directly by the main contractor, claims against the payment bond and gets paid. The drywall supplier, who sold drywall to a subcontractor, claims against the bond and gets absolutely nothing, because they are on the second tier and have no direct contract with the main contractor."
+  },
+  {
+    title: "Diagram 10 — Lien Bond vs L&M Payment Bond: Timing Difference",
+    text: "A Labour and Material Payment Bond and a Lien Bond are both used when people or companies have not been paid for work or materials. However, they are used at different times and for different purposes. A Labour and Material Payment Bond (L&M Bond) is proactive (proactive means taking action before a problem happens). It is usually arranged at the beginning of a construction project. Its purpose is to protect workers and suppliers (suppliers are people or companies that provide materials) if they are not paid. In simple terms, the bond is already there before anyone has to file a lien (a lien is a legal claim placed on a property because someone has not been paid). A Lien Bond, on the other hand, is reactive (reactive means taking action after a problem has already happened). It is used after a lien has already been placed on the property. The Lien Bond replaces the property as the security (security is something that protects a person's right to receive money). This allows the lien to be removed from the property. As a result, the property's title (the legal record showing who owns the property and whether there are legal claims against it) becomes clear again, so the property can be sold or used to obtain financing. The easiest way to remember the difference is: L&M Bond = protection before the problem. Lien Bond = solution after a lien has already been placed on the property.",
+    ex: "To prevent mechanics from locking up your new factory, you buy an L&M bond on Day 1. But let's say you didn't, and a plumber slaps a lien on your factory in Year 2, legally preventing you from selling the building. You buy a Lien Bond that day. The court moves the plumber's claim off your factory and onto the bond, instantly cleaning your title so you can sell the building."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

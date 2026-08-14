@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 11 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 11 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — Risk Allocation by Payment Method</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 12</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — Risk Allocation by Payment Method",
+    text: "Payment methods are just tools to shift risk. In a Fixed-Price contract, the contractor takes all the risk; if prices surge, they eat the loss, but if they work fast, they keep the extra profit. In a Cost-Plus contract, the owner takes all the risk; the contractor has absolutely no incentive to save money because the owner pays for every mistake and delay. Unit Price sits in the middle: the contractor guarantees the cost per unit, but the owner takes the risk on how many units are actually needed. The easiest way to understand this is to think of risk as “Who loses money if something goes wrong?” Payment methods are basically different ways of deciding who takes the financial risk (who loses money if the project becomes more expensive than expected). In a Fixed-Price contract (a contract where the total price is agreed on before the work starts), the contractor (the person or company doing the work) takes most of the risk. For example, if the contractor agrees to build something for $100,000 but the materials suddenly become much more expensive, the contractor still gets only $100,000 and may lose money. But if the contractor finds a way to finish the work for only $80,000, they keep the extra $20,000 as profit (money left over after paying their costs). In a Cost-Plus contract (a contract where the owner pays the contractor's actual costs plus an additional amount for doing the work), the owner (the person or company paying for the project) takes most of the risk. If the project becomes more expensive, the owner usually pays more. Because the contractor's costs are being paid by the owner, the contractor may have less incentive (less reason) to save money or finish quickly. Unit Price is somewhere in the middle. A unit is one individual piece or amount of work, such as one metre of pipe or one cubic metre of concrete. In a Unit Price contract, the contractor agrees on the price for each unit. For example, they might agree to charge $100 for every metre of pipe installed. The contractor takes the risk if the cost of installing each metre becomes higher than expected. But the owner takes the risk of quantity (how many units are actually needed). If the original estimate was 1,000 metres but the project actually needs 1,500 metres, the owner has to pay for the additional 500 metres. Easy way to remember: Fixed Price → contractor takes the risk of cost. Cost-Plus → owner takes the risk of cost. Unit Price → contractor takes the risk per unit, owner takes the risk of quantity. Let's use one simple construction project for all three, so you can see the difference clearly. Imagine you hire a contractor to build a 100-metre fence. 1. Fixed-Price Contract: You and the contractor agree: \"I will pay you $10,000 to build the fence.\" The contractor estimates that it will cost them $8,000. If the contractor's costs become $9,000 → they still get $10,000 → $1,000 profit. If costs become $12,000 → they still get $10,000 → $2,000 loss. If they find a cheaper way and spend only $6,000 → they still get $10,000 → $4,000 profit. 👉 Contractor takes the cost risk. 2. Cost-Plus Contract: Instead, you say: \"I will pay you whatever the fence actually costs, plus $2,000 for your work.\" The contractor spends $8,000. You pay: $8,000 + $2,000 = $10,000 But suppose materials become expensive and the contractor spends $12,000. You pay: $12,000 + $2,000 = $14,000 The contractor is still getting their $2,000 fee, so you (the owner) take the cost risk. 👉 Owner takes the cost risk. 3. Unit-Price Contract Now imagine you don't know exactly how much fencing you will need. You agree: \"I will pay you $100 for every metre of fence you build.\" If you need 100 metres: 100 × $100 = $10,000 But then you discover you actually need 150 metres: 150 × $100 = $15,000 The contractor is protected because they agreed to $100 per metre. But you take the risk of how many metres are needed. If you only need 80 metres: 80 × $100 = $8,000 👉 Contractor takes the risk of the cost of each metre; owner takes the risk of the number of metres. 🧠 Super-simple memory trick: Contract Who takes the risk? Fixed Price Contractor takes cost risk Cost-Plus Owner takes cost risk Unit Price Contractor takes price-per-unit risk; owner takes quantity risk Think: Fixed → \"The price is fixed, contractor deals with the problem.\" Cost-Plus → \"Whatever it costs, owner pays.\" Unit Price → \"We know the price of one, but don't know how many.\"",
+    ex: "If you are building a road and use fixed-price, the contractor loses money if asphalt prices double. If you use cost-plus, the owner pays the doubled asphalt price. If you use unit-price, you agree to $100 per ton, but if the road ends up needing twice as many tons as expected, the owner pays for the extra tons."
+  },
+  {
+    title: "Diagram 2 — The Fixed-Price Myth vs Reality",
+    text: "Many owners falsely believe a 'fixed price' means the price will absolutely never change. In reality, changes to the scope, design errors, or unexpected site conditions will almost always trigger change orders that increase the price. Naive owners budget with zero contingency and face a massive financial crisis at the end. Sophisticated owners know the fixed price is just a starting baseline and hold a separate contingency fund to pay for unknowable risks. Many owners (the person or company paying for and building a project) think that a fixed price (a price agreed on at the beginning of a project) means the price can never change. But that is not always true. If the owner asks for more work, there is a design error (a mistake in the drawings or plans), or something unexpected is found at the site (the place where the project is being built), the price can increase. These changes are often handled through a change order (an official change to the original agreement that can increase or decrease the price). A person who does not understand this might make a budget with zero contingency (no extra money saved for unexpected problems). Then, if unexpected costs appear, they may suddenly have a serious money problem. An experienced owner understands that a fixed price is basically the starting price, not a guarantee that nothing will ever change. They keep a separate contingency fund (extra money saved specifically for unexpected costs) in case problems happen.",
+    ex: "You sign a 'fixed-price' contract for a $5 million office building. Halfway through, the excavator hits solid bedrock that wasn't on the survey. The contractor files a legally valid change order for $500,000 to blast the rock. The fixed price just became $5.5 million."
+  },
+  {
+    title: "Diagram 3 — The Cost-Plus Transfer Pricing Trap",
+    text: "Cost-plus contracts hide a nasty trick called transfer pricing. If a contractor needs a site trailer, they could rent one from an outside company, and the owner pays the rental fee. But often, the contractor buys the trailer themselves and 'rents' it to your project. The owner reimburses them the full purchase price over the year, but when the project ends, the contractor walks away owning a free trailer. Owners must use aggressive audits to stop this. A cost-plus contract (a contract where the owner pays the contractor for the project costs plus an extra amount for the contractor's profit) can have a tricky problem called transfer pricing (when a contractor charges the project for something that the contractor itself owns or provides). For example, imagine the project needs a site trailer (a small portable office used at a construction site). The contractor could rent the trailer from another company. In that case, the owner pays the contractor back for the rental cost. But the contractor could instead buy the trailer itself and then charge the project as if it were renting the trailer. The owner keeps paying these \"rental\" costs during the project. The problem is that the project may eventually pay enough to cover the entire purchase price of the trailer. When the project ends, the contractor still owns the trailer. So, in a way, the owner has paid for the trailer, but the contractor gets to keep it. This is why the owner (the person or company paying for the project) needs to carefully audit (check the contractor's costs and financial records) the contractor's charges. Otherwise, the contractor could charge the project for things that benefit the contractor personally, not just the project.",
+    ex: "A contractor buys a $20,000 generator for your project and bills you $2,000 a month to rent it. After 10 months, you have paid $20,000. At the end of the job, the contractor puts the generator in their truck and uses it on their next job. You just bought them a generator."
+  },
+  {
+    title: "Diagram 4 — GMP Contracts: The Hybrid Mechanism",
+    text: "A Guaranteed Maximum Price (GMP) contract acts like a hybrid between cost-plus and fixed-price. Below the target price, it acts like cost-plus: the owner and contractor share any cost savings, giving the contractor a heavy incentive to be efficient. But if costs explode past the target price, a ceiling kicks in. It instantly switches to a fixed-price model, and the contractor must eat all the extra costs out of their own pocket to protect the owner. A Guaranteed Maximum Price (GMP) contract is a type of construction contract where the payment works somewhat like cost-plus (the owner pays the contractor for the actual costs of the work, plus an additional amount for the contractor's profit) but also has a maximum limit. Think of it like this: if the project costs less than the agreed target price, the owner and contractor (the person or company doing the construction work) can share the savings (the money that was not spent). This gives the contractor a strong reason to work efficiently and avoid wasting money. However, if the project becomes more expensive than the agreed maximum price, a ceiling (a maximum amount that cannot normally be exceeded) protects the owner. The contractor must then pay the extra costs themselves instead of asking the owner for more money. So, in very simple terms: if the project costs less, both sides can benefit; if the project costs much more, the contractor takes the extra loss.",
+    ex: "You set a GMP of $1 million with a 50/50 savings split. If the contractor finishes for $800,000, you save $100,000 and the contractor gets a $100,000 bonus. But if they mess up and it costs $1.2 million, you still only pay $1 million, and the contractor loses $200,000 of their own money."
+  },
+  {
+    title: "Diagram 5 — Unit Price: The Quantity Adjustment Logic",
+    text: "Unit price contracts only work well if the estimated quantities are accurate. If the actual quantity drops significantly, the contractor gets burned because they have fewer units to spread their heavy, fixed mobilization costs across. If the quantity spikes massively, the contractor might face terrible winter weather or overtime costs trying to finish the extra work. A good contract needs a formula to adjust the unit price if quantities swing too wildly in either direction. Unit price contracts (a contract where the contractor is paid a set amount for each unit of work, such as $100 for every metre of pipe installed) work well when the estimated quantity (the amount of work the customer expects to need) is close to the actual amount of work. If the actual quantity becomes much smaller, the contractor (the person or company doing the work) can lose money because they still have to pay their fixed costs (costs that stay roughly the same no matter how much work they do). One important fixed cost is mobilization (the cost of bringing workers, machines, tools, and equipment to the job site and getting everything ready). For example, if the contractor expected to install 1,000 metres of pipe but ends up installing only 200 metres, they have much less work to help cover the cost of bringing everything to the site. On the other hand, if the amount of work becomes much larger than expected, the contractor may have to work during winter weather or pay overtime (extra money paid to workers for working beyond their normal hours), which can make the job much more expensive. Therefore, a good contract should have a formula (a specific calculation written in the contract) that allows the unit price (the price paid for one unit of work) to be changed when the actual quantity becomes much higher or lower than originally expected.",
+    ex: "A contractor agrees to dig 100 holes for $100 each, assuming the $10,000 total will cover the $5,000 cost to haul the heavy excavator to the site. The owner changes the plan and only needs 10 holes. The contractor gets paid $1,000, which doesn't even cover a fraction of the cost to haul the machine."
+  },
+  {
+    title: "Diagram 6 — Construction Management: The Conflict-of-Interest Switch",
+    text: "A pure construction manager is just an agent who oversees trades for the owner; they do no physical work, making their oversight completely objective. But if a construction manager decides to start performing physical work themselves, a massive conflict of interest triggers. They are now the overseer judging their own physical work. This 'at-risk' model is legal, but the owner must explicitly agree to this dangerous dynamic upfront. The confusing part is basically “who is supervising the work, and who is actually doing the work?” A construction manager (a person or company hired by the owner to manage and supervise a construction project) can work in two different ways. In the normal pure construction manager model, the construction manager only supervises the workers and other companies doing the construction. They do not physically do the construction work themselves. This makes their job more neutral because they are only watching and managing other people's work. But if the construction manager also starts doing the physical construction work themselves, there is a problem. Now they are in charge of checking and judging work that they themselves performed. This creates a conflict of interest (a situation where a person has two roles that can interfere with each other). For example, they might have to inspect their own work and decide whether their own work was done correctly. This arrangement is called an at-risk construction manager (a construction manager who also takes responsibility for doing some of the actual construction work). It is legal, but the owner (the person or company paying for and owning the project) must clearly agree to this arrangement before the work starts.",
+    ex: "You hire a pure construction manager to watch over the painters and plumbers. But then the CM decides to do the concrete pouring themselves to make extra money. If the concrete is poured poorly, you are relying on the CM to report their own bad work to you, which they have every incentive to hide."
+  },
+  {
+    title: "Diagram 7 — Alliance/IPD: The Shared Risk Pool",
+    text: "Alliance or Integrated Project Delivery (IPD) agreements try to stop everyone from pointing fingers and suing each other. They use a 'no-blame' clause so parties can't sue for defects, and a shared risk-and-reward pool. If the project wins, everyone splits the profit pool. If it fails, everyone loses their profit. The limitation is that if the failure is so catastrophic that it burns through the entire profit pool, the owner is still left holding the bag for the remaining losses. The idea is basically “we all succeed together, and we all suffer together.” An Alliance or Integrated Project Delivery (IPD) agreement (a type of construction agreement where everyone works together instead of each company blaming the others) is designed to reduce blaming and lawsuits between the people involved in a project. The agreement usually has a “no-blame” clause (a rule saying that the parties generally cannot sue each other when something goes wrong, such as a defect, which is a problem or mistake in the work). It also creates a shared risk-and-reward pool (a common amount of money that everyone shares depending on how well the project goes). If the project does well and makes extra money, everyone shares the profit pool (the money available to be shared as profit). If the project does badly, everyone gives up their expected profit. However, there is a limit to this protection. If the project goes extremely badly and the losses are bigger than the entire profit pool, the owner (the person or company paying for and owning the project) still has to pay the remaining losses. In other words, everyone shares the pain up to the amount of the profit pool, but if the losses go beyond that amount, the owner carries the extra loss.",
+    ex: "The owner, architect, and builder put their combined $1 million expected profit into a shared pool. If the builder makes a $500,000 pouring mistake, the repair money comes directly out of that shared pool, meaning the architect loses money too. This forces the architect to help the builder fix the problem instead of just suing them."
+  },
+  {
+    title: "Diagram 8 — Field Review: The Expectation Gap",
+    text: "Clients and engineers have totally different expectations of what 'field review' means. The client thinks the engineer is acting as a guarantor, making sure every single nail is perfectly placed. The engineer thinks they are just casually glancing around for general conformance. Both extremes are legally unreasonable. The engineer cannot guarantee perfection without moving into the building full-time, but they also cannot be completely blind. The exact scope of the review must be negotiated before signing. The main idea is actually quite simple: Clients and engineers often understand “field review” differently. A field review (when an engineer visits a construction site to look at the work) does not mean the engineer is responsible for checking every small detail or guaranteeing that everything is perfect. The client may think the engineer is a guarantor (someone who promises that something will be done correctly), but that is usually not what a field review means. On the other hand, the engineer cannot simply walk around the site, take a quick look, and ignore obvious problems. The engineer is expected to make a reasonable effort to see whether the work generally follows the design. The important point is that the engineer and client should clearly agree on what the field review will include before the contract is signed. For example, they should agree on how often the engineer will visit, what they will check, and what they are not responsible for checking.",
+    ex: "You do a two-hour weekly field review and miss that a contractor used the wrong screws behind a sealed wall. The client demands you pay to rip the wall open, thinking your 'review' was a 100 percent guarantee. You have to point to the contract proving you only promised periodic visual checks, not X-ray vision."
+  },
+  {
+    title: "Diagram 9 — Penalty vs Liquidated Damages",
+    text: "If a contract charges a contractor $10,000 a day for being late, it is only enforceable in Canada if it is classified as 'Liquidated Damages.' This means the $10,000 is a genuine, mathematical pre-estimate of what the owner will actually lose each day. If the $10,000 is just an arbitrarily massive number used to terrify the contractor into finishing quickly, it is called a 'Penalty Clause,' and courts will strike it down entirely. Absolutely, Nima. Here is the same idea with the difficult words explained right inside the paragraph: Imagine a contract (a legal agreement between two or more people or companies) says that a contractor (the person or company hired to do the work) must pay the owner $10,000 for every day the work is late. This $10,000 payment can be legally enforced if it is liquidated damages (an amount of money that both sides agreed on in advance as a reasonable estimate of the loss the owner would suffer because of the delay). For example, if the owner expects to lose about $10,000 every day because the project is late, then $10,000 may be reasonable. But if the owner chooses an extremely large amount, such as $100,000 per day, simply to scare or pressure the contractor into finishing on time, it may be a penalty clause (a punishment written into the contract rather than a reasonable estimate of the owner's actual loss). In that situation, a Canadian court may refuse to enforce the penalty. The key idea is: reasonable estimate of the loss = liquidated damages; excessive amount meant to punish = penalty.",
+    ex: "You build a toll bridge. The owner calculates they will lose exactly $5,000 a day in lost tolls if you are late. Setting the late fee at $5,000 a day is valid Liquidated Damages. But if they set the late fee at $100,000 a day just to punish you, a judge will declare it an illegal penalty and throw it out."
+  },
+  {
+    title: "Diagram 10 — The Tercon Three-Stage Exclusion Clause Test",
+    text: "Writing 'we are not liable' in a contract doesn't mean you are actually safe. The Supreme Court uses the Tercon test, which has three brutal gates. First, does the clause clearly apply to the specific disaster that happened? Second, was the clause horribly unfair or unconscionable when the contract was signed? Third, is there a major public policy reason for the judge to strike it down anyway? A clause can be perfectly written and still fail gate two or three. Simply writing “we are not liable” (liable means legally responsible for something) in a contract does not automatically protect you. The Supreme Court uses something called the Tercon test (a three-step legal test used to decide whether a clause that tries to avoid responsibility should actually be enforced). First, the judge asks whether the clause clearly applies to what happened (in other words, does the wording actually cover this specific problem?). Second, the judge asks whether the clause was unconscionable (so extremely unfair or unreasonable when the contract was made that it should not be accepted). Third, the judge asks whether enforcing the clause would go against public policy (an important rule or principle that the law wants to protect for the good of society). If the answer to either the second or third question is a problem, the clause can fail even if the words in the contract were written very clearly. So, writing “we are not responsible” is not a magic shield—the court can still decide that the clause should not protect you. 🍦 Simple example: You hire a company to move your furniture to your new house. Before the move, the contract says: \"We are not responsible for any damage to your furniture.\" During the move, the company drops your $5,000 TV and breaks it. Now you say: \"You broke my TV. You should pay for it.\" The company says: \"Nope! The contract says we're not responsible.\" The Tercon test asks three questions: Does the clause cover this situation? Yes. It says they aren't responsible for damage to your furniture. Was the clause extremely unfair when you agreed to it? Maybe. For example, imagine the company knew that its workers were careless and you had no real choice but to accept the contract. Would enforcing the clause go against an important public rule? Maybe. For example, if enforcing it would encourage companies to behave in a seriously unacceptable way. So even though the contract clearly says \"we are not responsible,\" the company doesn't automatically win. 🧠 Super simple way to remember it. \"It's written in the contract\" ≠ \"It's automatically valid.\" The judge still asks: Does it cover what happened? → Is it unfair? → Should the law refuse to enforce it anyway?",
+    ex: "You sell engineering software and put an exclusion clause saying 'We are never liable for bugs.' You knowingly sell a bugged version that destroys the client's servers. The clause clearly applies (Gate 1), but the judge strikes it down at Gate 3 because protecting someone who actively lies and sells poisoned software violates fundamental public policy."
+  },
+  {
+    title: "Diagram 11 — The Dispute Resolution Provision: Escalating Stages",
+    text: "Contract disputes do not jump straight to court. They follow an escalating ladder of negotiation and arbitration. But the most dangerous part is the very first step: the Notice of Claim. Contracts have strict, unforgiving deadlines for notifying the other party that you are upset. If you miss that written notice deadline by even a few days, your entire million-dollar claim can be permanently barred, no matter how right you were. Contract disputes (a contract dispute is a disagreement about a deal or agreement) do not usually go directly to court (a legal place where a judge decides a disagreement). Instead, the contract may require the two sides to first try negotiation (talking to each other to try to solve the problem) and then arbitration (having a neutral person called an arbitrator listen to both sides and make a decision). But the most important and dangerous step may happen right at the beginning: the Notice of Claim (a formal written message telling the other side, \"You have caused me a problem, and I am making a legal claim against you\"). Contracts often give you a strict deadline (a specific date by which you must do something) to send this notice. If you miss that deadline—even by a few days—you may lose your right to make the claim. This means you could have a very good case and still lose the right to ask for your money. For example, if a contract says you must give written notice within 10 days, waiting until day 13 could potentially mean your million-dollar claim is barred (you are no longer legally allowed to pursue it).",
+    ex: "A contractor hits a buried gas line and racks up $50,000 in delays. The contract says you must notify the owner in writing within 7 days. The contractor waits 10 days to send the email. The owner uses the strict 7-day rule to completely deny the claim, and the contractor eats the $50,000 loss."
+  },
+  {
+    title: "Diagram 12 — What Makes a Contract 'Bankable'",
+    text: "'Bankability' means a lender looks at a project and feels safe giving it a massive loan. If an owner is already rich, bankability doesn't matter much. But if the owner is relying on the project itself to pay back the loan, the lender will heavily scrutinize every contract. They want to ensure risks are passed to third parties, like bonding companies or insurers, so the lender doesn't lose their money if the contractor goes bankrupt. The easiest way to understand bankability is: Bankability means: “Does the project look safe enough that a bank is willing to lend a lot of money for it?” A lender (a bank or another person/company that lends money) wants to know that it will get its money back. If the owner (the person or company building the project) already has plenty of money, the bank may feel safer because the owner can repay the loan using their own money. In that case, bankability (how safe the project looks to a lender) is not as important. But if the owner does not have enough money and is depending on the project to make money and repay the loan, the lender will examine the project's contracts very carefully. They want to make sure that if something goes wrong—such as the contractor (the company hired to build the project) going bankrupt (running out of money and being unable to pay its debts)—someone else, such as an insurer (a company that pays for certain losses) or a bonding company (a company that promises to cover certain financial losses if a contractor fails), will cover the loss. This makes the project safer for the lender because the lender has a better chance of getting its money back.",
+    ex: "A developer wants a $50 million loan to build a condo, but only has $1 million in cash. The bank refuses to lend the money until the developer forces the contractor to get a Performance Bond. The bank knows that if the contractor goes bankrupt, the bonding company will step in and finish the building, making the loan 'bankable' and safe."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

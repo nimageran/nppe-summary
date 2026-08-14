@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 12 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 12 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Tort Taxonomy</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 11</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Tort Taxonomy",
+    text: "A tort (pronounced \"tort\") is a civil wrong (an action that causes harm to another person, allowing them to sue for money or compensation, rather than leading to criminal punishment). A tort is independent of a contract (it can happen even if the two people never signed an agreement or had any contract with each other). For example, if you accidentally damage someone's property while driving, they can sue you even though you never had a contract with them. The law divides torts into two main types. The first is an unintentional tort (you did not mean to cause harm, but you were careless or made a mistake). The most common example is negligence (failing to use reasonable care, causing someone to be injured or suffer a loss). The second is an intentional tort (you deliberately did something that violated another person's legal rights, such as hitting someone or entering their property without permission). For intentional torts, the courts generally do not care whether you were being careful or had good intentions while doing the act. If you intentionally committed the wrongful act, you are liable (legally responsible) for the harm it caused.",
+    ex: "Accidentally dropping a heavy wrench off a catwalk onto a delivery truck is negligence. Deliberately throwing that same wrench through the truck's windshield because you are angry is an intentional tort. The physical damage is identical, but the legal categories are completely different."
+  },
+  {
+    title: "Diagram 2 — The Negligence Gauntlet",
+    text: "Making a mistake does not mean you automatically owe someone money. A plaintiff must drag your actions through four sequential filters. First, did you owe them a duty of care? Second, did you actually breach the standard of care? Third, was your specific mistake the direct, proximate cause of the accident? And fourth, did they suffer an actual financial or physical loss? If your lawyer can break even one of those links, the lawsuit dies immediately. Making a mistake does not automatically mean you have to pay money to someone. In law, a person who is making a claim against you is called a plaintiff (the plaintiff is the person who says they were harmed and is asking the court for compensation, or money to cover their loss). The plaintiff has to pass through four steps before they can prove that you are legally responsible. Think of these steps like four locked doors—if they cannot open even one door, the case cannot continue. First, they must prove you had a duty of care (a duty of care means you had a legal responsibility to act carefully and avoid causing harm to that person). Second, they must prove you breached the standard of care (to breach means to break a rule or fail to do what you should have done; the standard of care means the level of caution and skill that a reasonable person in the same situation would normally use). In simple words, they must show you did not act carefully enough. Third, they must prove your mistake was the cause of the accident. This includes proximate cause (meaning your mistake was closely connected to the harm and was not just a small or unrelated event that happened before it). They need to show that your action actually led to the problem. Fourth, they must prove they suffered an actual loss (a real harm, such as physical injury, damage to property, or financial loss). A person cannot receive money just because someone made a mistake if no real damage happened. If your lawyer can show that even one of these four parts is missing, the claim can fail because the person has not proven that you are legally responsible. For example, maybe you had a duty of care, but you did not make a mistake. Or maybe you made a mistake, but it did not cause any harm. In either situation, you may not owe compensation.",
+    ex: "You approve a faulty mechanical assembly design, completely breaching your standard of care. But before the machines are shipped, an inspector catches your error and the parts are replaced at the factory's expense, not the client's. The client tries to sue you, but the lawsuit instantly dies at gate four because they suffered zero actual loss."
+  },
+  {
+    title: "Diagram 3 — The Duty of Care Web",
+    text: "As an engineer, you have different legal relationships (different legal responsibilities and obligations) with different people. You have a relationship with the owner (the person or company that hired you for the project) through both a contract (a written agreement that explains what each side must do) and tort law (laws that deal with harm caused by someone's careless or wrongful actions, even when there is no contract). This means the owner may have two legal ways to make a claim against you if something goes wrong: by saying you broke the contract (didn't do what you promised) or by saying you were negligent (careless and caused harm). You also have a legal relationship with the general public (people who may be affected by your work, such as nearby residents or road users), but only through tort law, because they never signed a contract with you. The contractor (the person or company that actually builds or constructs the project) is different. Normally, you do not owe the contractor a duty of care (duty of care means a legal responsibility to act carefully to avoid causing harm). This is because the contractor is responsible for deciding how to do the construction work safely. However, if you step out of your lane (go beyond your own professional role and responsibilities) and start giving the contractor direct instructions about how to perform the work safely, you may create a legal duty and become responsible if those instructions are careless or cause harm.",
+    ex: "If you walk onto the factory floor and tell the rigging crew exactly how to chain up a massive stamping press, and the press falls, you just inherited their liability. By stepping outside your design role and giving instructions, you instantly created a tort duty of care to the contractor."
+  },
+  {
+    title: "Diagram 4 — The Breach Spectrum",
+    text: "Not all standard of care breaches are the same. Incompetence means you took on work completely outside your training. This is rare. Lack of care is the everyday killer. It means you were perfectly capable of doing the math, but you rushed, skipped a check, or worked while exhausted. The law judges you against an average, reasonably competent engineer in your specific field, not against a standard of absolute perfection. Not all mistakes in following the required level of care are the same. Incompetence (not having the knowledge, training, or skills needed to do a particular job) means you accepted a job that you were simply not trained or qualified to do. For example, a mechanical engineer who has no training in electrical engineering agrees to design a complicated electrical system. This type of problem is relatively rare. Lack of care (not being careful enough when doing work you actually know how to do) is much more common. For example, you know how to do a calculation correctly, but you are in a hurry, skip an important check, or do the work when you are extremely tired and make a mistake. The law does not expect engineers to be perfect or never make mistakes. Instead, it compares your work to what an average, reasonably competent engineer (a normal engineer with the expected knowledge, skills, and care) in the same field would have done in the same situation. So, the question is not \"Did you make any mistake?\" but rather \"Did you act as carefully and competently as a normal engineer in your field would have acted?\"",
+    ex: "Designing a hydraulic pump without double-checking your pressure tolerances because you were rushing to leave early on a Friday is a textbook 'Lack of Care' breach. A simple peer review checklist would have prevented it entirely."
+  },
+  {
+    title: "Diagram 5 — The Misrepresentation Spectrum",
+    text: "When you make a false statement, the law focuses entirely on your state of mind. If it was an honest mistake, it is an innocent misrepresentation, and the only remedy is to cancel the deal. If you were sloppy and should have checked your facts, it is negligent misrepresentation, meaning you now have to pay damages. If you outright lied, or simply did not care whether it was true, that is fraudulent misrepresentation, which brings massive damages and possible criminal charges. When you make a false statement (you say something that is not true), the law mainly looks at what you were thinking and whether you were careful when you made the statement. There are three levels: Innocent misrepresentation (you said something false, but you honestly believed it was true). For example, you tell someone, \"This car has never been in an accident,\" because you genuinely believed that was true, but you were wrong. You did not mean to lie. In this situation, the other person can usually cancel the deal (end the agreement and return things to how they were), but you normally do not have to pay money for their loss. Negligent misrepresentation (you said something false because you were careless and should have checked whether it was true). For example, you tell someone, \"This machine is safe to use,\" without checking the safety information, even though you should have checked it. You did not necessarily mean to lie, but you were careless (you did not take reasonable steps to make sure your statement was true). In this situation, you may have to pay damages (money paid to compensate someone for the loss they suffered). Fraudulent misrepresentation (you knowingly make a false statement or you do not care whether the statement is true). For example, you know a car has been in a serious accident, but you tell the buyer, \"This car has never been in an accident.\" That is an intentional lie. You can face much more serious damages (money you may have to pay for the other person's losses), and in some situations, there can also be criminal consequences (punishment under criminal law). So, the easiest way to remember it is: Honest mistake → Innocent → Cancel the deal Careless mistake → Negligent → Pay damages Lie / don't care if true → Fraudulent → Much more serious consequences",
+    ex: "You sell a used CNC machine. If you accidentally misread the operating hours, the buyer just returns it. But if you knowingly use software to roll back the operating hours to trick the buyer into paying more, that is fraud, and you will pay heavy damages."
+  },
+  {
+    title: "Diagram 6 — The Fraud Chain",
+    text: "Fraud (fraud is intentionally lying or deceiving someone to get them to do something that causes them a loss, usually a financial loss) is a serious legal accusation, and it can only be proven if all four parts below are true. Think of it like a chain with four links—if even one link is missing, the whole chain breaks, and the accusation of fraud fails. The first link is that the statement (something a person said or claimed to be true) was actually false (not true). The second link is that the person knew it was false, or was reckless (they didn't care whether it was true or false and said it anyway). The third link is that they made the false statement to induce (persuade or convince) the other person to do something, such as sign a contract or spend money. The fourth link is that the other person relied on (believed and acted because of) the false statement and, as a result, suffered a financial loss (lost money or something of value). If any one of these four links is missing, the legal claim of fraud completely falls apart. Example: Alex tells Jamie that a car has never been in an accident, even though Alex knows that it has. Jamie believes Alex and buys the car. Later, Jamie discovers the truth and has to pay a lot of money for repairs. Because Alex made a false statement, knew it was false, intended Jamie to buy the car, and Jamie relied on the statement and lost money, all four parts of fraud are present. If Jamie had known the truth and bought the car anyway, one of the required parts would be missing, and proving fraud would be much harder.",
+    ex: "You falsely tell an investor that a new production line will produce ten thousand units a day, knowing it can only do five. You do this so they give you funding. They write the check, the factory fails to meet quotas, and they lose their investment. All four links connect perfectly. You committed fraud."
+  },
+  {
+    title: "Diagram 7 — The Fiduciary Trapdoor Test",
+    text: "Most business relationships are simply arm's-length commercial relationships (an arm's-length relationship means both sides are independent, look after their own interests, and neither side has special power over the other). For example, when you buy a laptop from a store, both you and the store negotiate for your own benefit. However, some relationships are very different. If one person has unilateral power (the ability to make important decisions without needing the other person's approval), and the other person is peculiarly vulnerable (especially dependent on that person and unable to properly protect their own interests), then the law may treat their relationship as a fiduciary relationship (a special legal relationship where one person must put the other person's interests ahead of their own). This creates a much higher level of legal responsibility. The person with the power now has a fiduciary duty (a legal duty to act honestly, loyally, and in the best interests of the vulnerable person, instead of acting for their own benefit). If they break this duty, the courts often impose very serious consequences because the law sees it as a betrayal of trust (abusing a position where someone relied on you), not just an ordinary mistake or poor business decision. Simplified Explanation: Most business relationships are normal deals where each side looks after its own interests. For example, when you buy something from a store, both you and the seller try to get the best outcome for yourselves. But if one person has much more power and the other is highly dependent on them, the law may treat the relationship differently. In that case, it can become a fiduciary relationship, meaning the powerful person must put the other person's interests first. This is called a fiduciary duty. If they break that duty, the law treats it as a serious breach of trust, not just a normal business mistake. Example: A financial adviser manages an elderly client's savings. The client trusts the adviser and cannot easily check whether the advice is good. The adviser must recommend investments that are best for the client, even if they earn less money themselves. If the adviser secretly recommends an investment only because it pays them a large commission, they have broken their fiduciary duty. A court may require the adviser to repay the profits or compensate the client because they abused the client's trust.",
+    ex: "If a busy project manager gives you full control of their budget to buy machinery parts at your absolute discretion, you are now a fiduciary. If you secretly buy the parts from a company you own at a markup, you have breached a fiduciary duty of loyalty, which is treated far worse than a standard contract breach."
+  },
+  {
+    title: "Diagram 8 — The Nuisance / Strict Liability Bypass",
+    text: "Normally, if someone wants to sue (take legal action against) another person, they usually need to prove that the other person was careless. This carelessness is called negligence (negligence means failing to act with reasonable care, causing harm to someone else). For example, if someone drives while texting and causes an accident, the injured person must show that the driver was careless. However, the rule from Rylands v. Fletcher creates a special exception called strict liability (strict liability means a person can be responsible for damage even if they were careful and did nothing wrong). This rule says that if someone brings something dangerous and unusual onto their property, and that thing escapes and causes damage, they are responsible for the damage. The important point is that the court does not ask, \"Was this person careless?\" Even if the person took every possible safety measure, they can still be responsible because the dangerous thing escaped and caused harm. In simple words: if you choose to keep something unusually dangerous on your property, and it gets out and damages someone else’s property, you may have to pay for the damage. Simple example: Imagine you store a huge tank of chemicals in your backyard. You build a strong fence, check it every day, and follow every safety rule. But one day, the tank breaks, the chemicals flow into your neighbour's yard, and destroy their garden. Under normal negligence rules, your neighbour would need to prove: \"You were careless.\" But under strict liability, they may only need to prove: You brought a dangerous thing onto your property. It escaped. It caused damage. Your careful behaviour may not protect you from responsibility.",
+    ex: "Your firm is using heavy explosives to blast bedrock for a new foundation. You follow every safety code perfectly. However, the ground vibrations escape your property line and shatter the glass windows of a nearby office. Because blasting is inherently dangerous, you are strictly liable and must pay for the windows immediately."
+  },
+  {
+    title: "Diagram 9 — The Pure Economic Loss Gatekeeper",
+    text: "The law usually does not protect money-only losses, unless there is a strong reason to do so. Normally, if you only lose money, you cannot sue someone. This is called pure economic loss, meaning there was no physical injury and no property damage. However, there are two important exceptions: when someone carelessly gives you wrong information that causes you to lose money, or when a dangerous design mistake forces you to spend money to fix a serious safety risk before anyone gets hurt. In these special situations, the law may let you recover your financial loss. Nima, here is the same idea rewritten with simpler words and explanations of the legal terms: The general rule is that you usually cannot sue someone just because you lost money. This type of loss is called pure economic loss (meaning you lost money, but nobody was physically hurt and no property was physically damaged). For example, if someone gives you bad advice and you lose money, the law usually does not allow you to sue them just for that money loss. However, there are two special exceptions (special situations where the normal rule does not apply). The first exception is negligent misrepresentation (when someone gives you incorrect information because they were careless, and you lose money because you trusted that information). For example, a professional gives you wrong information, you believe them, and you make a bad financial decision because of it. The second exception is when someone's negligent design (a careless mistake in designing a product, building, or system) creates a serious danger to people's health or safety. In this situation, even if nobody has been injured yet, the owner may spend money to repair the dangerous problem before someone gets hurt or killed. The law may allow the owner to recover that repair cost because the danger was serious and needed to be fixed. Simple way to remember it: Normally: \"You lost money only → usually no lawsuit.\" But two doors can open: Bad information caused you to lose money → you may sue. (You trusted wrong information.) A dangerous defect forced you to spend money to prevent harm → you may sue. (You paid to fix a serious safety problem before someone got hurt.) Think of it like this: the law usually says, \"Money losses are your own problem,\" but it makes exceptions when someone else's careless action created a special reason to protect you. Example: Sarah asks an accountant for tax advice. The accountant carelessly gives her incorrect information, and Sarah loses $20,000 because she relied on it. She may be able to sue for negligent misrepresentation. In another case, a building owner discovers a serious structural design defect that could cause the building to collapse. The owner pays to fix it before anyone is injured and may be able to recover those repair costs because the defect created a serious safety danger.",
+    ex: "You design a faulty structural column. It has not fallen on anyone, so there is no physical injury yet. But because it is a massive, life-threatening safety hazard, the owner has to spend $50,000 immediately to reinforce it. They are legally allowed to sue you for that $50,000 in pure economic loss to cover the repair."
+  },
+  {
+    title: "Diagram 10 — The Negligence Shield (Risk Reduction Cycle)",
+    text: "The best way to survive the negligence gauntlet is to never breach the standard of care in the first place. You do this through a continuous cycle: use standard checklists to catch easy errors, have someone independently check your math, run a peer review to catch bad judgment calls, and constantly take continuing education. The standard of care is measured at the exact time you did the work, so falling behind on industry knowledge is a fast track to negligence. The best way to avoid negligence (negligence means failing to do your job with the level of care that a reasonable professional would use) is to avoid making a breach (a breach means failing to meet a required rule or standard) of the standard of care (the level of care and skill that a reasonably competent professional is expected to use) in the first place. You can do this by following a continuous process: use standard checklists (lists of things you should check before finishing your work) to catch simple mistakes, have another person independently check your math (check your calculations without simply trusting your work), have a peer review (another professional checks your work and gives you their opinion) to catch mistakes in your decisions, and keep taking continuing education (learning new information and skills after you become a professional). This is important because the standard of care is judged based on what a reasonably competent professional should have known at the time you did the work. Therefore, if you stop learning and your industry develops new knowledge, methods, or safety rules, you may be considered negligent (legally at fault because you did not use the level of care expected from a professional).",
+    ex: "To avoid careless errors, you create a mandatory checklist ensuring every single Action Request explicitly references the correct Bill of Materials assembly number before submission. By standardizing the process, you make it almost impossible to breach the standard of care through a simple clerical mistake."
+  },
+  {
+    title: "Diagram 11 — The Learned Intermediary Chain",
+    text: "When a manufacturer creates complex technical equipment, they cannot easily explain the safety limits to a regular consumer. The law expects you, the engineer, to act as a 'learned intermediary.' The manufacturer gives you the technical data, and it is your legal duty to translate those warnings into safe limits for the end user. If you fail to pass those warnings along, the liability shifts entirely onto you. When a manufacturer (the company that makes a product) creates complicated equipment, it may be difficult for a normal customer to understand all the safety information and limits. In this situation, the engineer may act as a learned intermediary (a trained person who understands the technical information and explains it to the customer or user in a way they can understand). The manufacturer gives the engineer information about the equipment, including its safety limits (the limits that tell you how the equipment can be safely used). The engineer's job is to make sure the end user (the person who actually uses the equipment) understands these safety limits and warnings. If the engineer does not pass this important safety information to the user and someone is harmed because of it, the engineer may become legally responsible (responsible under the law) for the failure to give the warning.",
+    ex: "A supplier sells you high-speed bearings and provides a dense manual stating they will shatter if run continuously for over ten hours. You specify these bearings for a client's assembly line but never warn the client about the ten-hour limit. The bearings shatter and destroy the line. The manufacturer is safe; you are liable."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

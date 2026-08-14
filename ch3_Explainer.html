@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 3 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 3 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Triple-Jeopardy Framework</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 7</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Triple-Jeopardy Framework",
+    text: "One mistake can lead to three different legal cases: a criminal case, a civil case, and a professional discipline case. Double jeopardy only means the government cannot try someone twice for the same crime after a final decision—it does not stop other types of legal cases. Each case has a different standard of proof, meaning they need different amounts of evidence. Civil and disciplinary cases usually need less evidence than criminal cases. Because of this, a person can be not guilty in criminal court but still lose their professional license or have to pay money in another case. A single mistake can trigger three completely separate legal nightmares at the exact same time: a criminal trial, a civil lawsuit, and a professional disciplinary hearing. People think 'double jeopardy' protects them from being punished three times for one crime, but that is totally false. Double jeopardy only stops the government from charging you with the exact same criminal offense twice. Furthermore, the standard of proof is different. You might be found 'not guilty' in criminal court because there is reasonable doubt, but still lose your license and get sued for millions because civil and disciplinary courts use a much lower bar called the balance of probabilities. 🟥 Criminal → Criminal: Double jeopardy can apply. Example: You are acquitted of robbery, and the government generally cannot put you on trial again for that same robbery offense. 🟦 Criminal → Civil: Double jeopardy generally does not apply. Example: You are acquitted of causing someone's injury criminally, but the injured person may still bring a civil lawsuit. 🟩 Criminal → Professional discipline: Double jeopardy generally does not apply. Example: Criminal case → Criminal case Imagine John robs a bank. The government charges John with bank robbery, and he goes to trial. The jury finds John guilty, and the judge sentences him to 5 years in prison. Later, the prosecutor discovers additional evidence showing that John committed the robbery. The prosecutor says: “Now that we have more evidence, let's put John on trial again for the same bank robbery and try to get a harsher conviction.” Generally, double jeopardy prevents the government from doing that. John has already been prosecuted and convicted for that same criminal offense, so the government generally cannot simply give him another trial for the same offense. But here's the important distinction Double jeopardy does not mean John can never face another criminal charge related to the incident. For example, suppose the bank robbery involved two completely separate criminal offenses, such as: Bank robbery Possession of an illegal firearm Depending on the jurisdiction and the specific circumstances, those may be treated as separate offenses, so double-jeopardy analysis can be different. Simple rule: Guilty → same criminal offense → government tries again → double jeopardy may prohibit the second prosecution. The fact that John was guilty rather than not guilty doesn't change the basic idea. Double jeopardy can protect against a second prosecution after either an acquittal or a qualifying conviction.",
+    ex: "A doctor is accused of making a serious mistake during surgery. The government charges the doctor in criminal court, but the jury finds there is not enough evidence to convict. The patient then files a civil lawsuit and wins compensation. Later, the medical licensing board reviews the same incident. The board decides the doctor violated professional rules and suspends the doctor's medical license. All three outcomes can happen because each case has a different purpose and a different standard of proof. You are accused of defrauding a client. You are acquitted in criminal court because the jury has a slight doubt. But the engineering association uses the lower standard of proof, decides it is more likely than not that you did it, and strips your engineering license forever."
+  },
+  {
+    title: "Diagram 2 — The Duty Hierarchy: What Outranks What",
+    text: "As an engineer, you owe duties to five different groups, and ethical dilemmas happen when two of those groups demand opposite things. To solve the dilemma, you use a strict hierarchy. The public comes first, the client second, the employer third, the profession fourth, and yourself dead last. Your duty to public safety is absolutely paramount, meaning it overrides every single other duty on the list. Also, notice that your duty to yourself is at the very bottom. 'I might get fired' is never a valid excuse for ignoring public safety. As an engineer (a person who uses science and math to design, build, or improve things such as machines, buildings, roads, or systems), you have duties (legal and ethical responsibilities—things you are expected to do) to five different groups of people. Sometimes, these duties conflict (two responsibilities tell you to do opposite things). This is called an ethical dilemma (a situation where there is no easy choice because doing the right thing for one group may mean letting another group down). To decide what to do, engineers follow a hierarchy (a ranked order that tells you which responsibility is more important than another). The order is: the public (everyone who could be affected by your work) comes first, the client (the person or company paying for the engineering work) comes second, the employer (the company or organization you work for) comes third, the engineering profession (the standards, reputation, and integrity of all engineers) comes fourth, and yourself (your own personal interests, such as keeping your job or avoiding trouble) comes last. Your duty to public safety (protecting people's lives, health, and well-being) is paramount (the most important responsibility of all). This means it overrides (takes priority over) every other duty on the list. For example, if your employer tells you to ignore a dangerous problem to save money, but fixing it would protect the public, you must choose public safety. Even if you think, \"I might get fired,\" that is not considered a valid reason to ignore a serious safety risk, because protecting the public always comes first.",
+    ex: "Your boss orders you to ignore a cracked foundation to save money, threatening to fire you if you don't. Your duty to public safety, which is number one, completely outranks your duty to your employer, number three, and your duty to yourself, number five. You must report the crack, even if you lose your job."
+  },
+  {
+    title: "Diagram 3 — The Parallel Proceedings Trap",
+    text: "If you are facing a criminal charge (a situation where the government accuses you of breaking a law) and a disciplinary hearing (a professional review where an organization decides if you broke professional rules and whether you should keep your license) at the same time, you can be in a difficult legal situation. In a criminal trial (a court case where the government tries to prove that you committed a crime), you have a constitutional right to remain silent (a legal right that allows you to refuse to answer questions so your own words cannot be used to hurt your case). This protects you from accidentally incriminating yourself (saying something that makes you look guilty or helps prove that you committed a crime). However, in a disciplinary hearing (a process used by a professional organization, such as an engineering association, to investigate possible professional misconduct), you may feel pressure to explain yourself because your license (official permission to work as a professional engineer) could be affected. You may think, \"I need to speak to defend myself.\" The problem is that anything you say in the disciplinary hearing may be recorded in a transcript (an official written record of everything that was said during the hearing). The police or prosecutors (government lawyers who try to prove criminal cases) may be able to use those words later in your criminal trial. In other words, your own explanation in the professional hearing could become evidence against you in court. Because of this risk, the safest option is usually to officially request that the disciplinary board (the group responsible for handling professional misconduct cases) pause or delay the hearing until the criminal trial is finished. This allows you to protect your right to remain silent during the criminal case while avoiding unnecessary damage to your professional case. Simple NPPE memory sentence: Criminal case = you have the right to stay silent. Disciplinary case = you may feel forced to speak. Speaking in the disciplinary case can hurt your criminal case. Therefore, ask to delay the disciplinary hearing until the criminal case is over.",
+    ex: "You are charged with criminal negligence for a bridge collapse and the engineering board wants to interview you. If you go to the board interview to try to save your license, the prosecutor will use your interview answers to put you in prison. You must halt the board interview until the criminal trial ends."
+  },
+  {
+    title: "Diagram 4 — The Consultant's Three-Way Conflict",
+    text: "When a contractor (the person or company hired to do construction work) asks the owner (the person or company paying for the project) for extra money, and the owner refuses, the consultant (the professional, such as an engineer or designer, who advises the owner and reviews the contractor's work) faces a difficult situation. The consultant has to balance three different responsibilities. First, they have a duty (a legal or professional responsibility to do something correctly) to protect the owner from fake claims (requests for money that are not actually justified). Second, they have a duty to treat the contractor fairly and honestly. However, there is another hidden concern: protecting themselves. Sometimes, the contractor is asking for extra money because the consultant made a design error (a mistake in the plans, drawings, or calculations). In this situation, the consultant is like a student marking their own exam—they are checking a problem that they may have caused. Even though the consultant may feel pressure to hide the mistake and reject the contractor's claim, they must still evaluate the claim honestly. If the contractor's request is reasonable, the consultant should approve it and should immediately tell their insurance company (the company that may cover the cost if they are blamed or sued) that there may be a legal claim against them. Simple idea to remember for NPPE: A consultant must not protect themselves by being dishonest. Their responsibility is to be fair, even if the truth may cause problems for them. If their own mistake may be involved, they should report it to their insurer instead of hiding it. Simplified Explanation: When a contractor asks for extra money and the owner disagrees, the consultant must make a fair decision. The consultant has to protect the owner from unreasonable claims while also treating the contractor fairly. The difficult part is that the consultant’s own mistake may have caused the contractor’s request. Even if admitting the mistake creates problems, the consultant must still be honest and objective. If the contractor’s claim is valid, the consultant should approve it and inform their insurance company about the possible issue. Example: A contractor finds that a building cannot be completed as planned because the consultant’s drawing had a mistake. The contractor asks for extra payment to fix the problem. The owner refuses because they do not want to pay more. The consultant reviews the situation and realizes the mistake may be theirs. Instead of denying the claim to protect themselves, the consultant approves the fair cost and reports the issue to their insurer. This keeps the consultant ethical and follows professional responsibility.",
+    ex: "A contractor asks for an extra $50,000 because your blueprint forgot to include the plumbing layout. To save your own reputation, you might want to reject the claim and blame the contractor. But ethically, you must honestly approve the $50,000 extra and admit it was your fault, then call your liability insurer."
+  },
+  {
+    title: "Diagram 5 — The Constructive Trust Mechanism",
+    text: "If you secretly do extra engineering work on weekends that your employer could have hired you for, you are breaking your loyalty duty to your job. Instead of only asking you to repay lost money, the law can use something called a Constructive Trust, which is a legal fiction. This means the law treats your secret earnings as if they already belonged to your employer. So you may have to give back all the profit you made from that side work, even if your boss didn’t directly lose money. To avoid this situation, you usually need to get written permission from your employer before doing competing or related side work. If you secretly moonlight on the weekends doing engineering jobs that your boss could have taken, you have breached your duty of loyalty. Your boss does not just sue you for the money they lost. Instead, the law uses a terrifying weapon called a Constructive Trust. The law simply pretends that every dollar of profit you made on those secret side-jobs was actually held in trust for your boss all along. You will be forced to surrender your entire profit to your employer, even if your employer wasn't actively harmed. The only way to avoid this is to ask your boss for written permission before taking the side-job. If you secretly do extra engineering work on weekends that your employer could have done or could have earned money from, you may be breaking your duty of loyalty (your legal responsibility to act honestly and not take business opportunities away from your employer). This is sometimes called moonlighting (doing another job while you already have a main job). If you do this without your employer's permission, the law may use something called a constructive trust (a legal rule that basically treats money you made improperly as money that belongs to someone else). In simple terms, the law can say: \"You should not have made this money for yourself, so we will treat the profit as if you were holding it for your employer.\" This means you may have to give your employer all the profit you made from the side job, even if your employer cannot show that they directly lost money. To avoid this problem, you should get written permission from your employer before doing side work that competes with your employer or involves business that your employer could have taken.",
+    ex: "You work for an engineering firm. On the weekend, you secretly design a patio for a neighbor and make a $5,000 profit. When your firm finds out, the court applies a constructive trust and forces you to hand that entire $5,000 check directly over to your boss."
+  },
+  {
+    title: "Diagram 6 — The Self-Policing Double Bind",
+    text: "Professionals are forced to self-police, which puts you in a terrible double bind. If you see another engineer make a dangerous mistake and you say nothing, you can be disciplined for failing to report them. But if you aggressively accuse them without having all the facts, you can be disciplined for unprofessional conduct and attacking a peer. To survive this trap, you must use transparent conditionality. You report the issue, but clearly state what assumptions you are making and explicitly note that your opinion might change if new facts come to light. Professionals (people with a license to work in a specialized field, such as engineers, doctors, or lawyers) are expected to self-police (help make sure members of their own profession follow the rules and report serious problems when necessary). This creates a difficult situation called a double bind (a situation where either choice can lead to trouble). Imagine you see another engineer making a serious mistake. You have two choices: Report the engineer → You might cause conflict or be accused of unfairly blaming them if you are wrong. Do not report the engineer → You might be blamed for ignoring a safety issue. For example, if you see another engineer (a licensed professional who designs, builds, or evaluates engineering work) make a dangerous mistake and you say nothing, you could be disciplined (officially investigated or punished by your professional licensing body) for failing to report the problem. On the other hand, if you accuse the engineer without knowing all the facts, you could also be disciplined for acting unprofessionally (behaving in a way that does not meet the standards expected of a professional) or unfairly attacking a colleague. A good way to handle this situation is to use transparent conditionality (clearly explaining what facts you know, what assumptions you are making, and that your opinion could change if new information becomes available). In other words, you report the possible problem, but you make it clear that your conclusion is based only on the information you currently have and that you are willing to change your opinion if new facts come to light.",
+    ex: "You are hired as an expert witness and review a rival engineer's calculation. Instead of screaming in court, 'This engineer is a total incompetent fraud!', which could get you disciplined, you safely state, 'Based strictly on the limited data I was provided, these calculations appear incorrect, but I reserve the right to change my opinion if the original engineer provides missing field data.'"
+  },
+  {
+    title: "Diagram 7 — The CFPOA Jurisdictional Reach",
+    text: "Canadian criminal law usually only applies if you commit the crime inside Canada. The Corruption of Foreign Public Officials Act, or CFPOA, completely shatters that rule. It makes it illegal to bribe foreign officials anywhere in the world. It applies if your business has a real connection to Canada, or if you are a Canadian citizen or even just a Permanent Resident. And here is the ultimate nightmare: if you are convicted under this act in Canada, the United States can still prosecute you for the exact same bribe under their own laws. The US does not recognize double jeopardy for foreign bribery. Normally, Canadian criminal law (laws that punish people for serious illegal actions) only applies when the crime happens inside Canada. For example, if someone commits a crime in another country, Canada usually does not have the power to punish them for that action. However, the Corruption of Foreign Public Officials Act (CFPOA) (a Canadian law that fights bribery involving government officials in other countries) creates a major exception. This law makes it illegal for certain people or companies connected to Canada to bribe foreign public officials (give money, gifts, or benefits to government workers in another country to unfairly get an advantage). This means the action can be illegal even if the bribe happens outside Canada. The law can apply if a business has a real connection to Canada (for example, a Canadian company or a company doing important business in Canada), or if the person involved is a Canadian citizen (a person who legally belongs to Canada) or a Permanent Resident (someone who is allowed to live in Canada permanently but is not a citizen). The most serious part is that being punished in Canada may not completely protect someone from legal action in another country. For example, if Canada convicts someone for paying a bribe to a foreign official, the United States may still prosecute the same person for the same bribe under its own laws. This is because the United States does not fully accept double jeopardy (the legal idea that a person should not be punished twice for the same crime) when it involves foreign bribery cases. In simple words: one illegal bribe involving foreign officials could create legal problems in more than one country. Easy way to remember it for NPPE: Normally, Canada punishes crimes that happen in Canada. CFPOA is an exception because it allows Canada to punish certain bribery crimes that happen anywhere in the world, as long as there is a strong connection to Canada. Also, another country like the US may still take legal action for the same bribery because foreign bribery is treated as a global crime.",
+    ex: "You are a Permanent Resident of Canada working in Brazil, and you pay a $10,000 bribe to a local Brazilian mayor to get a mining permit. You will be arrested and thrown in a Canadian prison under the CFPOA. When you get out, the United States can immediately arrest you and throw you in an American prison for that exact same Brazilian bribe."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 5 — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 5 — Audio Explainer</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Liability Cascade Across Four Structures</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 8</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Liability Cascade Across Four Structures",
+    text: "Business structures are entirely about who takes the bullet when things go wrong. In a Sole Proprietorship, you and the business are exactly the same; your house is on the line. In a Partnership, you are jointly liable, meaning your partner's catastrophic mistake can drain your personal bank account. A Limited Liability Partnership fixes this by protecting your personal assets from your partner's negligence. Finally, a Corporation puts a total shield around your personal assets, trapping the liability completely inside the company. Business structures (different legal ways of organizing and running a business) are mainly about one important question: If the business causes a problem, who has to pay for it? In a Sole Proprietorship (a business owned and operated by one person), you and the business are legally treated almost like the same thing. This means that if the business owes money or causes serious harm, your personal assets (things you personally own, such as your house, car, or money in your bank account) could be used to pay for the problem. In simple words, your personal property could be at risk. In a Partnership (a business owned by two or more people), the partners can be jointly liable (legally responsible together for a problem). This means that if your partner makes a serious mistake while working for the business, you may also have to pay for the damage, even if you did not personally make the mistake. In the worst situation, your partner's mistake could put your own personal money and property at risk. A Limited Liability Partnership, or LLP (a type of partnership that gives partners some protection from certain problems caused by other partners) can protect your personal assets from your partner's negligence (carelessness or failure to act with reasonable care). So, if your partner makes a careless mistake, your own house and personal bank account are generally better protected from that mistake. Finally, a Corporation (a business that the law treats as a separate legal person from its owners) creates the strongest separation between you and the business. This is often called limited liability (the idea that you usually do not personally have to pay the company's debts or obligations). In general, if the corporation causes a problem, the liability (legal responsibility for the problem) stays with the corporation rather than reaching your personal assets.",
+    ex: "You and a buddy start a standard engineering partnership. Your buddy completely botches a structural design while you are on vacation, and a roof collapses. Even though you did zero work on that project, the client can legally sue you and take your personal vehicle and your savings to pay for your buddy's mistake."
+  },
+  {
+    title: "Diagram 2 — Partnership Formation: You Can Be a Partner Without Knowing It",
+    text: "You do not always need to sign a formal legal document (an official written paper with legal language) to become a partnership (a business relationship where two or more people work together and share the results of a business). The law can decide that you are partners based only on your actions (what you actually do), even if you never agreed to become partners. For example, if you and another person regularly run a business together, share the money earned (profits, meaning the money left after paying business expenses), share the costs (expenses, meaning the money spent to operate the business), and make decisions together, the law may consider you partners. However, doing one small project together one time does not usually create a partnership. The important thing is a continuous pattern (something that happens repeatedly over time) of working together like business owners. If your actions look like a partnership, the law may treat you as partners even if you never called yourselves partners.",
+    ex: "You and another engineer rent a cheap office to split the cost. You start helping each other with drafting overflow and splitting the profits from those specific jobs every month, without ever signing a contract. You are now legally a partnership, meaning you are completely liable for their bad engineering advice."
+  },
+  {
+    title: "Diagram 3 — The Limited Partner Trap",
+    text: "A limited partner gets the ultimate sweet deal: they invest money, and their liability is strictly capped at that exact amount. But there is one fatal trap. To keep this shield, they must be totally passive. The exact second a limited partner starts giving management orders, directing the project, or providing engineering services, the shield vaporizes. They instantly become a general partner with unlimited personal liability. A limited partner is someone who invests money in a business but normally does not help run the business. The big benefit is that their personal liability (the amount of money they may personally have to pay if the business has debts or causes harm) is usually limited to the amount they invested. For example, if they invest $10,000, they normally risk losing that $10,000, but they usually do not have to use their house, car, or other personal money to pay the business's additional debts. However, there is one very important rule. To keep this protection, the limited partner must stay mostly passive (they invest money but do not actively run or control the business). If they start giving orders about how the business should be run, directing the project, or doing engineering work for the business, they may lose their special legal protection. The law may then treat them like a general partner (a partner who actively helps run the business and can be personally responsible for all the business's debts and obligations). In that case, they could lose the protection that limited their responsibility to their original investment and may become personally responsible for much more.",
+    ex: "You invest $10,000 as a limited partner in a startup building automated assembly lines. One day, you walk onto the floor and tell the crew to change the robotics wiring to speed things up. Because you gave a direct management order, you just blew up your limited liability. If the robot breaks and kills someone, you can be sued personally for millions."
+  },
+  {
+    title: "Diagram 4 — Piercing the Corporate Veil",
+    text: "The corporate shield is incredibly strong. People think judges will 'pierce the veil' just because a company is broke and it feels unfair to leave creditors unpaid. That is totally false. A judge will only pierce the corporate veil and attack the owners personally if the company was deliberately set up or used to commit outright fraud. If the company just went bankrupt because of stupid business decisions, the veil holds. The corporate shield (a legal rule that usually protects the owners of a company from having to personally pay the company's debts) is very strong. A company is treated as a separate legal person from its owners. This means that if the company owes money to creditors (people or businesses that the company owes money to), the creditors usually cannot take the owners' personal money or property to pay those debts. Some people think a judge will remove this protection, called piercing the corporate veil (taking away the legal separation between the company and its owners), simply because the company has no money and it seems unfair that the creditors will not be paid. That is not true. If the company simply goes bankrupt (does not have enough money to pay its debts) because the owners made bad or stupid business decisions, the owners are usually still protected. A judge will normally remove this protection only when the owners deliberately created or used the company to commit fraud (intentionally deceiving someone to get money or another benefit).",
+    ex: "Your corporation buys $50,000 of CNC tooling but goes bankrupt before paying the invoice. The supplier begs the judge to pierce the veil and make you pay from your personal account because they desperately need the cash. The judge refuses. You were just bad at business, not a fraudster, so your personal bank account stays perfectly safe."
+  },
+  {
+    title: "Diagram 5 — The Fiduciary Duty Enforcement Gap",
+    text: "Company directors owe a strict duty of loyalty, but there is a massive structural flaw in who enforces it. The duty is owed to the corporation, not the shareholders. So, only the corporation can sue a corrupt director. But the corrupt directors are the ones controlling the corporation! To fix this absurd loop, the law created the 'Derivative Action,' which lets oppressed minority shareholders step up and sue the corrupt directors on behalf of the helpless company. Company directors (the people who help control and make important decisions for a company) have a duty of loyalty (a legal responsibility to act honestly and in the best interests of the company, instead of using the company for their own benefit). But there is a strange problem: this duty is owed to the corporation (the company itself), not directly to the shareholders (the people who own part of the company). So, normally, the corporation is the one that can sue a director who breaks this duty. But what if the dishonest directors are the very people controlling the company? The company may not be willing to sue them because the people who should start the lawsuit are the same people who did something wrong. To solve this problem, the law created something called a derivative action (a legal process that allows a shareholder to sue the directors on behalf of the company). In simple terms: the company was harmed, but the directors control the company and won't sue themselves, so a shareholder can step in and bring the lawsuit for the company.",
+    ex: "The CEO of your machine tool company secretly gives a massive, overpriced supply contract to a shell company he personally owns. You only own 5 percent of the shares. The company itself refuses to sue the CEO because the CEO controls the board. You use a derivative action to bypass the board and sue the CEO yourself on behalf of the company."
+  },
+  {
+    title: "Diagram 6 — The Officer/Director Statutory Liability Web",
+    text: "Beyond corporate shields, the government casts a massive web of direct statutory liability over directors. If the company fails to pay wages, ignores environmental rules, skips paying taxes, or violates safety codes, the directors are personally hunted down by the government. The only way to survive is the 'Due Diligence' defense: proving you took active, reasonable steps to prevent the failure. Passive ignorance is never a defense. A company usually gives its owners and directors some legal protection (this is sometimes called a corporate shield, meaning the company is treated as a separate legal person, so people are usually not personally responsible for the company's debts). However, for some important problems, the government can make directors personally responsible. A director (a person who helps manage and make important decisions for a company) may be personally responsible if the company does not pay its employees' wages, breaks environmental laws, fails to pay taxes, or ignores safety rules. In these situations, the director cannot simply say, \"I didn't know what the company was doing.\" There is a possible defense called due diligence (taking reasonable and active steps to make sure the company follows the law). To use this defense, the director must show that they actually tried to prevent the problem—for example, by checking that employees were paid, making sure taxes were filed, or creating safety procedures. Simply doing nothing or saying \"I didn't know\" is usually not enough. In simple terms: being a director does not automatically make you personally responsible for every company problem, but you are expected to actively take reasonable steps to prevent legal violations.",
+    ex: "Your manufacturing plant dumps toxic solvent into the local river. As a director, you cannot defend yourself by saying, 'I didn't know the guys on the floor were doing that.' If you didn't proactively set up a strict hazardous waste training protocol, you failed the due diligence test and will be held personally liable for the environmental fines."
+  },
+  {
+    title: "Diagram 7 — Two Imperfect Shields: Indemnity vs Insurance",
+    text: "Directors try to protect themselves with two tools: Corporate Indemnities and D&O Liability Insurance. Both have fatal gaps. An indemnity is just a promise that the company will pay your legal bills, but if the company goes bankrupt, that promise is worthless. Insurance will pay out even if the company is bankrupt, but insurance only covers money. Neither an indemnity nor an insurance policy can serve prison time for you if you commit a criminal offense. Company directors (the people who are responsible for making important decisions for a company) usually try to protect themselves in two ways: Corporate Indemnity (a promise from the company that it will pay certain legal costs if the director gets into legal trouble) and D&O Liability Insurance (D&O means Directors and Officers; this is insurance that can help pay certain costs or losses when a director or officer is sued because of their work for the company). However, both protections have important limits. An indemnity (the company's promise to pay your legal costs) may become useless if the company goes bankrupt (runs out of money and legally cannot pay its debts). In that situation, the company may have promised to pay your legal bills, but it has no money to actually do it. Insurance is different: the insurance company can still pay covered claims even if the company goes bankrupt. However, insurance usually covers financial losses (money that you have to pay), not every possible consequence of your actions. Most importantly, neither an indemnity nor insurance can protect you from criminal punishment (punishment for breaking a criminal law). For example, if a director commits a serious criminal offense and is sentenced to prison, the company cannot simply pay the director's way out of prison, and an insurance policy cannot serve the prison sentence for them.",
+    ex: "A worker dies because you criminally ignored safety codes at the machine shop. The company has a massive insurance policy, so the insurance pays the millions of dollars in civil fines to the family. But the government also hits you with criminal negligence causing death. The insurance cannot sit in a jail cell for you; you go to prison."
+  },
+  {
+    title: "Diagram 8 — Insider Trading: The Public Disclosure Timing Test",
+    text: "Insider trading is incredibly simple. It is entirely about timing. It doesn't matter that you know a company secret; what matters is if you trade stocks before the general public finds out. If you buy or sell while the information is still a secret, that is illegal. If you wait until the company announces it on the news, it is perfectly legal to trade. Also, simply telling your friend the secret so they can trade is illegal 'stock tipping.' Insider trading (buying or selling a company's stocks, which are small pieces of ownership in a company, while you have important secret information about that company) is actually a simple idea. The main thing to understand is timing (when you buy or sell). It is not automatically illegal just because you know a company secret. The problem happens when you trade (buy or sell stocks) while important information is still not public (the general public does not know about it yet). For example, imagine you work for a company and secretly learn that the company is about to announce a huge deal that will probably make its stock price go up. If you buy the company's stock before the announcement, you may be committing insider trading because you used secret information to trade before everyone else had the same information. However, once the company officially announces the information and the general public (ordinary investors and other people who can access the information) has had a chance to learn about it, trading based on that information is generally no longer considered insider trading. Also, you cannot simply give the secret information to your friend and tell them to trade. This is called stock tipping (giving someone secret, important information so they can use it to buy or sell stocks). In simple terms: you cannot use important secret company information to get an unfair advantage in the stock market, and you cannot secretly give that information to someone else so they can get that advantage either.",
+    ex: "You are an engineer at a tech firm, and you find out your new lithium battery design failed safety testing. You instantly sell all your company stock. That is illegal insider trading. But if you wait until three days after the CEO announces the failure on the public news, you can sell your stock legally, because the secret is already public knowledge."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

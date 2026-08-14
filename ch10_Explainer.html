@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 10 — Audio Explainer (Unified Narrative)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:12px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:12px;border-radius:6px;border-left:4px solid var(--accent);}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 10 — Audio Explainer</h1>
+  <div class="sub">Progressive narrative explanations with applied examples. Tap a number to jump.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — Choosing a Process</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 10</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — Choosing a Process: Matching Method to Project Need",
+    explanation: "Imagine you are choosing how to buy something. If you are buying a work truck (a truck used for work), you might simply ask several companies for their prices and choose the cheapest option that meets your requirements. You don't need to discuss or change the deal—you just want the right truck at the lowest price. This is similar to an Invitation to Tender (a formal process where a buyer asks companies to submit prices and normally chooses the lowest acceptable price). But imagine you are building a custom house (a house designed specifically for you). You may care about much more than price. You might want to compare different designs, materials, quality, and ideas before choosing a company. This is similar to an RFP, or Request for Proposals (a process where a buyer asks companies to suggest different solutions, not just give a price). So, the main difference is this: a Tender is mainly about finding the lowest acceptable price, while an RFP is about finding the best overall solution. In an RFP, the buyer can usually compare different proposals (proposals are the plans or solutions that companies suggest), give them scores using a scoring matrix (a table used to compare different companies based on things like price, quality, experience, and design), and negotiate (discuss and change the terms before making the final deal). The important legal problem happens when you mix the two processes. If you use a Tender, you are following strict rules and normally cannot suddenly start negotiating with the companies after they submit their prices. If you want to discuss and change things, an RFP is more appropriate. If the buyer treats a Tender like an RFP and starts negotiating, a court (a legal authority that decides disputes) may say that the buyer broke the rules of the Tender and may make the buyer legally responsible for the consequences.",
+    example: "You need exactly 500 standard steel pipes. You issue a Tender, and you must pick the cheapest supplier without arguing or changing the terms. Later, you need a custom robotics sorting system, so you use an RFP. This allows you to review three different designs and negotiate the final software features before signing the contract. If you tried to negotiate the pipe prices during the Tender, a contractor would successfully sue you for breaching the rigid rules of the tendering process."
+  },
+  {
+    title: "Diagram 2 — The Contract A / Contract B Formation Mechanism",
+    explanation: "Imagine you need someone to build something for you, so you ask several contractors (people or companies that do construction work) to give you their prices. You make a formal request called a call for bids (a request from the owner asking contractors to submit their offers). Each contractor sends you a bid (their offer to do the work for a certain price). If a contractor follows all your rules and submits the bid correctly and on time, something important happens: a separate contract is automatically created between you and that contractor. This first contract is called Contract A (the contract created during the bidding process). Contract A basically says: the contractor cannot take their bid back, and the owner must treat the contractors fairly. So, if five contractors submit five acceptable bids, you actually have five separate Contract A's—one with each contractor. You then choose one contractor to actually do the construction work. When you make the final construction agreement with that contractor, that second contract is called Contract B (the actual contract to perform and pay for the construction work). So remember it like this: Contract A = the rules for submitting and competing with a bid. Contract B = the actual construction deal with the winner. However, if a contractor submits a bid that does not follow the rules, or submits it after the deadline, the bid is non-compliant (it does not meet the required rules). In that situation, Contract A is never created with that contractor.",
+    example: "You ask five builders to submit bids to build a new school. The exact second those five builders hand in their sealed, compliant envelopes, five distinct Contract A's instantly snap into existence, legally binding all five builders to keep their prices locked. You review the bids and pick Builder number two. Only Builder number two signs Contract B to actually build the school. If you accept a late bid from a sixth builder, the original five can sue you for breaching their Contract A rights."
+  },
+  {
+    title: "Diagram 3 — Ron Engineering, MJB, and Tercon: The Evolving Test",
+    explanation: "Let's understand Contract A (Contract A is the legal agreement created during a bidding process between the owner (the person or company asking for work) and the bidder (the person or company submitting an offer to do the work)). Imagine someone puts a sign saying \"This is not a dog\" on a golden retriever. Even though the sign says it is not a dog, everyone can see that it behaves like a dog, looks like a dog, and has all the features of a dog. The same idea applies in law: the real situation matters more than the name written on a document. Over many years, Canadian courts developed the rules for Contract A through three important Supreme Court cases. First, Ron Engineering created the idea of Contract A and explained that a bidding process can create a legal contract. Then, MJB explained that whether Contract A exists depends on what the documents and the parties' intentions actually show. Finally, Tercon confirmed the main rule: a document's title does not decide what it legally is. For example, an owner might call a document an \"Informal Request\" (a request that sounds like it is not a formal bidding process) and write \"No Contract A will be created\". However, the court will look at what the document actually does, not just what it is called. If the document has strict deadlines (fixed dates that must be followed), requires a bid bond (a financial guarantee showing the bidder is serious and can complete the work), and has mandatory evaluation rules (required steps for choosing a winner), the court may decide that it is actually a formal tender process and that Contract A exists. The owner cannot avoid legal responsibilities just by using a clever title or disclaimer (a statement saying something is not legally binding). Simple memory rule for NPPE: Courts look at the \"body\" of the document, not the \"name\" on the cover. If it behaves like a Contract A, the law may treat it as a Contract A.",
+    example: "You issue a document titled 'Informal Request for Proposals' for a new highway project and put a bold disclaimer on page one stating, 'This is not a tender and no Contract A is formed.' However, inside the document, you demand a $50,000 bid bond and enforce a strict 2:00 PM Tuesday deadline. A judge will look at the strict rules, ignore your disclaimer completely, and legally enforce Contract A. If you break the rules of your own document, the contractors will successfully sue you."
+  },
+  {
+    title: "Diagram 4 — The Fairness Paradox: Process vs Application of Process",
+    explanation: "Let's break down the 'Fairness Paradox' from the ground up. Imagine you are inventing a backyard game. Because it is your game, you can make up totally unfair rules, like giving kids with blue shoes a ten-point head start. But once you write those rules down on paper and blow the whistle to start the game, you cannot secretly change them to let someone else win; you have to follow your own rules exactly. In the engineering and construction world, this is exactly how a buyer writes a 'tender document.' When an owner is sitting in their office designing the rules for a project, they are spending their own money. Therefore, they have absolutely no legal obligation to be fair to the market. They can legally write evaluation criteria that heavily favor local contractors, prioritize past relationships, or demand proprietary technology. However, a massive legal trap snaps shut the exact second those rules are published and builders submit their bids. This action instantly forms a binding agreement with the bidders called 'Contract A.' Contract A carries a strict, implied legal duty of fairness. This does not mean the rules themselves must be fair, but rather that the application of those published rules must be perfectly transparent and consistent. Secretly deviating from your own scoring matrix to pick a different winner is a direct breach of Contract A and exposes you to severe financial lawsuits.",
+    example: "You write a tender document for a bridge stating, 'Local contractors get an automatic 15% scoring bonus.' This is completely unfair to outside companies, but 100% legal because you set the rule in the design phase. Later, an out-of-town contractor submits a brilliant, incredibly cheap bid that you really want to accept. To ensure they win, you secretly ignore your 15% local bonus rule when scoring the bids behind closed doors. The local contractor will successfully sue you. They will not win because the 15% rule was unfair; they will win because you broke your own published rules, which is a direct breach of Contract A."
+  },
+  {
+    title: "Diagram 5 — The Privilege Clause Boundary",
+    explanation: "Let's break down the privilege clause from the ground up. Imagine holding a contest where you state, 'I don't have to give the prize to the fastest runner.' People might think you can give it to anyone you want for any reason. But legally, you can only skip the fastest runner if you told everyone the real reason beforehand, like 'I will also judge your running form.' In construction, tender documents almost universally contain a privilege clause stating, 'the lowest or any bid may not be accepted.' Many owners incorrectly believe this magic shield grants them absolute, unfettered discretion to select any contractor they desire. However, the Supreme Court has strictly narrowed its boundary. The privilege clause only protects the owner from liability for bypassing the lowest compliant bid if the specific alternative evaluation criteria—such as safety records, schedule, or experience—were explicitly disclosed in the tender documents. The clause does not grant the owner the right to evaluate bids based on undisclosed, secret criteria.",
+    example: "You receive three bids for a demolition job. You want to skip the lowest bidder because they have a terrible safety record, and pick the second lowest instead. If your tender document explicitly stated 'safety records will be evaluated,' your privilege clause protects you, and you can legally pick the second lowest. If you never mentioned safety anywhere in the document, relying on the privilege clause will fail. The lowest bidder will successfully sue you for breach of contract for using an undisclosed secret rule."
+  },
+  {
+    title: "Diagram 6 — Bid Shopping: Improper but Not Illegal",
+    explanation: "Let's break down bid shopping from the ground up. Imagine finding out what your friend offered to pay for a used car, and then secretly going to the seller and offering exactly one dollar more to steal the deal. It is an incredibly dirty trick, but it isn't technically a crime. In the construction industry, this is known as 'bid shopping.' This occurs when a general contractor leverages a subcontractor's confidential price quote to pressure a competing subcontractor into lowering their bid prior to the prime contract award. While this practice is universally condemned by construction associations as highly unethical and detrimental to industry integrity, Canadian courts have frequently ruled that it is not technically illegal in most circumstances. Because the practice is so deeply entrenched and widespread in the industry, courts struggle to establish a definitive legal cause of action, such as a breach of an implied custom. For a practice to be a binding 'industry custom,' the industry actually has to follow it. Since everyone bid shops, victims are often left without a viable legal remedy.",
+    example: "A roofing subcontractor submits a private quote to you for $50,000. Before awarding the contract, you secretly call a second roofer and say, 'I have a quote for $50,000. If you can do it for $45,000, I will give you the job.' This is unethical bid shopping. However, if the first roofer tries to sue you, they will likely lose in court. Because the practice is so incredibly common in the real world, the judge will rule that no specific legal contract or binding industry custom was broken."
+  },
+  {
+    title: "Diagram 7 — The Mistake-Withdrawal Test",
+    explanation: "Let's break down the mistake rules from the ground up. Imagine you agree to sell your bike for $100, but accidentally write $10 on the receipt. That is an obvious typo, and people would understand you didn't mean it. But if you sell it for $100 and then realize you could have gotten $150, that is just a bad choice, and you are stuck with it. Under the law of tendering, bidders cannot freely withdraw their bids due to internal calculation errors once the deadline has passed. To legally withdraw a bid without forfeiting their massive bid bond, the contractor must satisfy a strict, two-pronged legal test. First, the error must be financially material, meaning it is significant relative to the total project cost. Second, it must be a mistake on the face of the bid, meaning it is so obvious that an objective owner should have instantly recognized it as an error upon review. Furthermore, the courts draw a strict line between a clerical mistake and an error in judgment. Deliberately selecting a risky, cheaper construction method that ultimately fails is a judgment error, and legally binds the contractor to their submitted price.",
+    example: "You bid $10,000 to dig a tunnel because you plan to use standard shovels. Halfway through, you hit solid granite and realize you need a $50,000 tunnel boring machine. You try to withdraw your bid, claiming you made a 'mistake.' The law will not save you. You made a bad judgment call on the digging method, not an obvious mathematical typo on the paperwork. You must absorb the $40,000 loss out of your own pocket because you gambled on a cheap method and lost."
+  },
+  {
+    title: "Diagram 8 — Subcontract Crystallization: When Is a Sub Actually Bound?",
+    explanation: "Let's break down subcontractor binding from the ground up. Imagine telling a caterer you might use them for a party. Unless you actually write their name on the official invitations, you are totally free to hire someone else the next day. 'Subcontract crystallization' is the precise legal moment when a subcontractor becomes irrevocably bound to a general contractor. According to the legal precedent established in the Westgate case, if a general contractor explicitly names a specific subcontractor in their successful prime bid, the subcontract crystallizes and becomes binding the exact second the owner unconditionally accepts the general contractor's bid. This occurs even before the general contractor formally notifies the subcontractor. Conversely, as demonstrated in the Ron Brown case, if the general contractor merely utilizes the subcontractor's price to calculate their overall math but does not explicitly name them in the submission document, no mutuality of obligation exists. In that scenario, the general contractor is free to hire a different firm.",
+    example: "You are a general contractor bidding on a hospital. You use an electrician's $100,000 quote to build your total math, but you never write the electrician's name on your official submission. When you win the hospital job, you decide to ignore that electrician and hire someone else for $90,000. The original electrician will try to sue you, but they will lose. Because you never officially named them on the winning bid, the contract never crystallized, and you owed them nothing."
+  },
+  {
+    title: "Diagram 9 — The Bid Depository Anti-Shopping Mechanism",
+    explanation: "Let's break down bid depositories from the ground up. Imagine a sealed ballot box during an election. You cannot see who everyone else voted for, and you cannot change your vote once it is dropped in. A 'bid depository' is an administrative facility structurally engineered to physically act like this ballot box to completely eliminate bid shopping. In this system, subcontractors must submit their sealed bids into a literal locked box a specified duration, such as 24 hours, prior to the prime tender deadline. The general contractor retrieves these envelopes and is contractually bound by the depository rules to use the lowest conforming bid received for each trade. If the general contractor intends to self-perform the work using their internal workforce, they are stripped of their inherent advantage. They must submit their own sealed bid into the identical blind competition, ensuring they only win the scope if they are genuinely the most cost-effective option.",
+    example: "A drywall subcontractor drops their $40,000 sealed quote into the locked depository box. The general contractor opens it an hour later. The general contractor is now physically and contractually prevented from taking that $40,000 price and showing it to a rival drywaller to get a cheaper counter-offer. If the general contractor wants to do the drywall work themselves, they must also put their own price in a sealed envelope beforehand to prove they can actually do it cheaper than $40,000."
+  },
+  {
+    title: "Diagram 10 — The Trade Agreement Threshold Gate",
+    explanation: "Let's break down trade agreements from the ground up. Imagine a local town council deciding who fixes the park benches versus the federal government building a billion-dollar airport. The big projects have to follow massive international treaties to ensure global fairness. Government procurement is strictly governed by domestic and international trade agreements (such as CFTA or CETA), but only if the specific contract value exceeds established monetary thresholds. Procurements crossing these massive thresholds trigger rigorous, legally binding transparency, accessibility, and non-discrimination requirements. If a contractor identifies a breach of these treaty rules, such as an owner utilizing overly restrictive specifications to favor a local supplier, they cannot just complain to a regular judge. They must file a formal complaint with the Canadian International Trade Tribunal (CITT). This is governed by an incredibly aggressive 10-day limitation period. Failing to file within 10 days of when the breach was known results in a total forfeiture of the contractor's right to dispute.",
+    example: "You are bidding on a $5 million federal highway project, which crosses the trade agreement threshold. You notice the government unfairly rigged the rules to guarantee a local company wins. You decide to file a formal complaint with the trade tribunal, but you wait 12 days to gather your evidence. Your case will be immediately thrown out. Because you missed the brutal 10-day deadline, you are permanently blocked from complaining, and the courts will completely ignore you, no matter how unfair the process was."
+  },
+];
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" style="margin-top:12px;"><strong>The Explanation:</strong><br/><span class="expl-content" data-idx="${i}" data-field="explanation">${seg.explanation}</span></div>
+    <div class="ex-text"><strong>The Applied Example:</strong><br/><span class="ex-content" data-idx="${i}" data-field="example">${seg.example}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = "The Explanation. " + SEGMENTS[currentIndex].explanation + " The Applied Example. " + SEGMENTS[currentIndex].example;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// This chapter's SEGMENTS use "explanation"/"example" field names (not "text"/"ex"
+// like the other chapters), so the save logic below is adapted to match.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set();
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.expl-content, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        el.parentElement.classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const explEl = block.querySelector('.expl-content');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    explanation: ' + toJSStringLiteral(explEl.innerText) + ',');
+      lines.push('    example: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].explanation = block.querySelector('.expl-content').innerText.trim();
+      SEGMENTS[i].example     = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>
