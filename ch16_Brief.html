@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 16 Brief — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 16 — Audio Explainer — Brief</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — Operating Without Insurance</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 9</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — Operating Without Insurance: The Judgment-Proofing Trap",
+    text: "Going uninsured and arranging to look asset poor does not work. Even a groundless claim costs real money to defend, and one substantial claim can bankrupt you. Moving assets to a spouse once litigation is foreseeable is a fraudulent transfer and courts unwind it. Incorporating to hide assets fares no better, because a court may pierce the corporate veil, and more importantly your own negligence exposes you personally regardless of the company, even when you were acting as an employee or officer.",
+    ex: "Transferring the house to your spouse after the bridge fails is fraudulent. Doing it years earlier, with no claim in sight, is ordinary planning."
+  },
+  {
+    title: "Diagram 2 — Duty to Defend vs Duty to Indemnify",
+    text: "Two separate obligations with different triggers. The duty to defend is triggered by the allegations: if what is pleaded could possibly fall within the policy, the insurer must fund your defence, before anyone knows whether it is true. The duty to indemnify is triggered only by the outcome, once liability is established for something the policy actually covers. The duty to defend is therefore much broader, and an insurer can spend heavily defending a claim it turns out never had to pay.",
+    ex: "You are sued for a negligent design and the insurer funds the defence. You win, so there is nothing to indemnify, but the legal fees were still covered."
+  },
+  {
+    title: "Diagram 3 — The Subrogation Step-Into-Shoes Flow",
+    text: "Having paid your loss, the insurer takes over your legal position and can pursue whoever actually caused it. That is subrogation, and it is why paying a claim does not end the matter for the wrongdoer. Two things block it. A waiver of subrogation clause, where the insurer has contractually given up the right in advance. And the same policy bar: an insurer cannot subrogate against a party it also insures under that policy, since it would be suing someone it promised to protect. Commonwealth against Imperial Oil is the authority.",
+    ex: "Your insurer pays out for a specification writer's error and then sues him, unless you are both named on the same project policy."
+  },
+  {
+    title: "Diagram 4 — Insurable Interest: Why a Subcontractor Insures the Whole Project",
+    text: "A subcontractor holds an insurable interest in the entire project, not merely the trade they performed. The reasoning is that construction is interconnected: one trade's failure can destroy the work of every other trade and the building itself, so each of them stands to lose from a loss anywhere on site. The practical purpose is to keep everyone under one project policy rather than having trades sue each other after a fire, which is slower and more expensive for all of them.",
+    ex: "A plumber's defective pipe starts a fire that takes the tower. Because his work could foreseeably destroy the whole building, his interest covers all of it."
+  },
+  {
+    title: "Diagram 5 — Claims-Made vs Occurrence: The Timing Puzzle",
+    text: "A claims made policy asks one question: which policy was in force on the day the claim was made against you. It does not ask when you did the work. That means the policy you held while designing the project is irrelevant once it has lapsed, and the current policy responds instead. Everything difficult about professional liability insurance follows from this single feature, because the exposure attaches to the date of the claim rather than the date of the error.",
+    ex: "You designed the roof in 2015 under one policy and switched in 2020. Sued in 2022, it is the 2022 policy that answers, not the one you held when you drew it."
+  },
+  {
+    title: "Diagram 6 — The Notice Trap When Changing Insurers",
+    text: "Because coverage follows the claim date, transitions create gaps. Change employers, change insurers, or retire, and an error from years ago can surface with nobody on risk: the old insurer says the policy has ended, the new one says the work predates it. Two defences. Report any known potential claim to the correct insurer before the old policy ends, which fixes it to that policy. And on retirement, buy tail coverage, which extends protection for past work after you stop practising.",
+    ex: "You retire and simply cancel the policy. A client from five years ago sues, and without tail coverage nobody is on risk for that work."
+  },
+  {
+    title: "Diagram 7 — Material Non-Disclosure: Even Unrelated Facts Can Void Coverage",
+    text: "When applying for cover you must disclose material facts, meaning anything that could have affected the insurer's decision to write the risk or the premium charged. Fail to disclose one and the insurer may refuse a later claim, and here is the part people get wrong: the claim does not have to be connected to the concealed fact in any way. The insurer need not prove the omission caused the loss. It need only show that knowing it would have changed whether or how it insured you.",
+    ex: "You conceal two prior suits to get a cheaper premium. A new employee's unrelated error a year later can be declined on that concealment alone."
+  },
+  {
+    title: "Diagram 8 — Insurer-Insured Conflict: When You Need Your Own Lawyer",
+    text: "Your interests and your insurer's usually run together, and then diverge in three situations: the insurer denies coverage, the claim exceeds the policy limits, or you disagree with a settlement they want. In each you should retain your own counsel, because the insurer's lawyer is not solely yours. Excess exposure is the sharpest, since anything above the limit is your personal money. The protective step is to demand in writing that the insurer settle within limits. If it refuses, fights on and loses, that written demand founds a bad faith claim against the insurer.",
+    ex: "A one million policy against a two million claim, with the insurer wanting to gamble at trial. The extra million is yours, so the demand goes in writing."
+  },
+  {
+    title: "Diagram 9 — The Faulty-Design Exclusion + Resultant Damage Carve-Out",
+    text: "Under an all risks builders risk policy, first ask whether the loss came from faulty design, materials or workmanship. Faulty design is judged by the state of the art test, meaning what was known and achievable at the time it was designed, so a design that met the knowledge then available is not faulty merely because better methods emerged later. Where the work truly was faulty, the cost of making good that work is excluded. Damage it causes to genuinely separate property may be covered as resultant damage, unless a court finds that property was part of the same integrated contractual obligation.",
+    ex: "Your defective wall collapses onto a parked car. Rebuilding the wall is excluded as making good faulty work, but the crushed car is resultant damage."
+  },
+];
+
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  // Combine the main text and the example for the audio read-out
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

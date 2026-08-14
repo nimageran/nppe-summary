@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 13 Brief — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 13 — Audio Explainer — Brief</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — Concurrent Liability</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 9</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — Concurrent Liability: Why a Contract Doesn't Block a Tort Claim",
+    text: "Central Trust against Rafuse changed the old rule. A client with a contract can now sue you in contract and in tort at the same time. One guardrail remains: a tort claim cannot be used to escape or rewrite what the contract expressly says, so a clause capping your liability at ten thousand is not sidestepped by suing in negligence instead. But where the contract is silent, there is nothing to escape, and the court will fill the gap by imposing a tort duty of care.",
+    ex: "You design a bridge under a contract with no liability cap. When it fails, there is no clause to hide behind, and the tort claim runs freely."
+  },
+  {
+    title: "Diagram 2 — The Discoverability Clock",
+    text: "Two clocks run, and both must be checked. The ordinary limitation clock starts when the work is finished if the defect is patent, meaning visible to anyone looking. If the defect is latent, hidden in a wall or underground, the Kamloops rule holds the clock until the client actually discovers the damage or reasonably ought to have discovered it. Against that sits the ultimate limitation period, an absolute cutoff measured from the date the work was done, commonly ten to fifteen years, which ends the claim no matter when discovery happened.",
+    ex: "A pipe laid in 2010 leaks in 2025. The two year clock starts on discovery, but a ten year ultimate period already killed the claim in 2020."
+  },
+  {
+    title: "Diagram 3 — The Limitation Period Decision Tree",
+    text: "Three gates in order. First, was the defect patent or latent, which fixes when the clock started. Second, has the ordinary limitation period, often two years, run from that start date. Third, has the ultimate limitation period run, measured not from discovery but from the day the work was actually performed. The third gate overrides the others. A claim can be perfectly alive on gates one and two, discovered last month and filed immediately, and still be dead because the ultimate period expired.",
+    ex: "A hidden roof defect found three months ago passes the first two gates. The roof went on sixteen years ago against a fifteen year ultimate period, so it is dismissed."
+  },
+  {
+    title: "Diagram 4 — The Three Protections Against Indefinite Liability",
+    text: "Three tools, and two of them only exist if you negotiate for them. A contractual limitation period shortening the time to claim against you. A limitation of liability capping the amount, often at the level of your insurance. And the statutory ultimate limitation period, which is the only one that applies automatically without being written anywhere. The catch on the first tool is that some provinces do not permit contracting out of the statutory period, so a clause shortening it will simply be struck and the statutory period applies.",
+    ex: "Your contract gives the client one year to sue. If provincial law forbids shortening the statutory two years, the clause is void and they get the full two."
+  },
+  {
+    title: "Diagram 5 — The Joint and Several Liability Cash-Flow Disaster",
+    text: "Under joint and several liability the plaintiff does not have to collect from each defendant in proportion to fault. They can demand the entire award from whichever defendant can actually pay. Found thirty percent responsible alongside a contractor at seventy, you can be made to pay all of it, and you are then left to pursue the contractor for their share. If that contractor is bankrupt, the recovery never arrives and you carry the full loss for a fraction of the fault. The deep pocket is the target, not the main wrongdoer.",
+    ex: "You are ten percent at fault on a ten million dollar collapse and the builder holding ninety percent goes bankrupt. The owner can take the whole ten million from you."
+  },
+  {
+    title: "Diagram 6 — Contributory Negligence: The Switch That Changes Everything",
+    text: "Contributory negligence means the injured party was partly responsible for their own loss, and in many provinces even one percent flips the regime. Joint and several liability switches off and several liability applies instead, where each defendant pays only their own percentage and no more. That reverses who carries a bankrupt defendant's share: under joint and several it lands on the solvent defendants, and under several liability it lands on the plaintiff. A finding of fault against the plaintiff can therefore help you far more than its size suggests.",
+    ex: "The owner is found one percent at fault for rushing the schedule. You now pay only your ten percent, and the owner absorbs the bankrupt builder's nine million."
+  },
+  {
+    title: "Diagram 7 — The Vicarious Liability Boundary",
+    text: "An employer answers for an employee's negligence, but only within the course and scope of employment. Make a careless mistake doing your assigned work and the employer carries it. Step outside that boundary, private side work, use of company property for your own jobs, reckless conduct off the clock, and the employer is out of the picture entirely. You are personally liable and the firm's insurance does not follow you across that line.",
+    ex: "You design a neighbour's retaining wall on a Sunday for cash on your work laptop. It collapses, and the firm is untouched while you are sued personally."
+  },
+  {
+    title: "Diagram 8 — Codes as a Floor, Not a Ceiling",
+    text: "Codes set the minimum, never the maximum. Legislated codes bind everyone they cover. Contractual codes bind you because you agreed to them. Voluntary industry guidelines bind nobody in strict law, yet courts routinely treat them as the baseline for what a competent engineer would have done. Designing above code is always open to you as a matter of professional judgment. Designing below it reverses the burden: negligence is presumed, and you must produce a compelling justification to displace that presumption.",
+    ex: "Designing a roof for sixty pounds where the code asks forty is fine. Designing it for thirty to save money makes negligence the starting assumption."
+  },
+  {
+    title: "Diagram 9 — The Code-Compliance Liability Matrix",
+    text: "Perfect code compliance is not a defence, and there are four situations where you are liable despite it. Where you actually knew the code was inadequate. Where you should have known, because recent failures in the field had made the deficiency apparent to a competent engineer. Where the industry standard itself is careless, since everybody does it this way is no answer if the practice is unsafe. And where you are working on a leading edge design the code never contemplated, which calls for informed consent from the client about the uncertainty.",
+    ex: "You read a journal proving the current code's balcony calculations are flawed, build strictly to code anyway, and it cracks. Actual knowledge makes you liable."
+  },
+];
+
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

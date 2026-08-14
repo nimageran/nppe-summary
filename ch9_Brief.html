@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 9 Brief — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 9 — Audio Explainer — Brief</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Dual-Source Authority Test</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 13</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Dual-Source Authority Test",
+    text: "Two independent routes, and either one alone binds the principal. Express authority is authority actually granted. Apparent authority arises from the principal's own words, conduct or acquiescence, judged by what a reasonable outsider would believe. You need one, not both. What never works is the agent asserting it themselves, because apparent authority has to originate with the principal. With neither route present the principal is not bound at all, and the agent who claimed the authority is personally liable to the third party.",
+    ex: "Eight months of the owner introducing you as the buyer and never correcting suppliers binds the firm. Announcing it yourself to a supplier who heard nothing binds nobody."
+  },
+  {
+    title: "Diagram 1b — The Authority Limit Disclosure Rule",
+    text: "A limit the outsider could not see is treated as though it never existed. If the signed contract lets the site engineer approve up to ten thousand and a private internal instruction says five, the contractor may rely on ten and the owner is bound. The employer's remedy is to discipline the engineer, which does nothing to unwind the contract already made. Put that same five thousand limit into the contract the contractor signed and it becomes enforceable against them from that moment on.",
+    ex: "The engineer approves eight thousand. Under a private cap the owner still pays. Under a cap written into the signed contract, the owner does not."
+  },
+  {
+    title: "Diagram 2 — Imputed Knowledge",
+    text: "Knowledge an agent acquires in the normal course of duties is attributed to the principal automatically. It applies whether or not the agent ever passed it up the chain, and the principal is fixed with knowing it from the moment the agent knew it. Nobody told me is not available as a defence. A failure of internal communication is the principal's problem, not the other side's.",
+    ex: "Your inspector records a drainage problem in week two and mentions it to no one. The owner is deemed to have known from week two."
+  },
+  {
+    title: "Diagram 3 — The Indemnity Direction Flip",
+    text: "The direction of the clause is the whole question. The standard Canadian form has you covering losses caused by your own negligence, which matches ordinary law and is readily enforced. The flipped form, common in American drafting, has you covering losses caused by the other side's negligence even where you did nothing wrong. Courts dislike it, because it removes the other party's incentive to take care, and will enforce it only where the wording is impossible to misread.",
+    ex: "A clause indemnifying the contractor against claims arising from the contractor's own negligence is the flipped form, and that wording is clear enough to hold."
+  },
+  {
+    title: "Diagram 3b — Indemnity Can Add Liability But Cannot Remove It",
+    text: "Treat an indemnity as a one way valve. It readily adds liability you would not otherwise carry, reaching beyond what ordinary law would impose on you. It almost never removes liability you already have. Stripping away existing liability takes explicit wording, for instance that the indemnity replaces all other legal responsibility, and courts read wording like that strictly. Risk goes on easily and comes off with great difficulty.",
+    ex: "You argue that a detailed indemnity clause displaced your ordinary liability for a claim it never mentions. It does not. The clause adds, it does not subtract."
+  },
+  {
+    title: "Diagram 4 — Extras vs Credits: Who Pays for a Change",
+    text: "The question is never whether something changed, it is who caused it. An owner driven upgrade is the owner's cost. A hidden site condition is the owner's cost. A design error that was a reasonable interpretation of a genuinely vague requirement is not negligence, and the owner still pays the contractor for the extra work. Where there is real negligence liability exists, but in practice that cost is usually absorbed by the project contingency, typically five to ten percent, rather than fought out in court.",
+    ex: "A vague specification read reasonably one way costs forty thousand extra. Not negligence, so the owner pays. Extras raise the price, credits lower it."
+  },
+  {
+    title: "Diagram 5 — The Impact Cost Reservation Trap",
+    text: "Impact costs are the ripple effects of a change: delay, disruption, and extra labour on work that was never itself changed. Quote a firm price for the change without reserving them and that number is treated as covering everything, because the owner was entitled to read it that way. You cannot come back afterwards for the ripple. Two protections: state at the moment of quoting that impact costs are excluded and will be charged separately, or price them into the figure. The authority is Doyle Construction against Carling O'Keefe Breweries.",
+    ex: "You quote sixty thousand for the extra pour and say nothing else. The three trades it delays cost you twenty five thousand, and that is yours to carry."
+  },
+  {
+    title: "Diagram 6 — Change Order vs Change Directive",
+    text: "Both handle a change, and the difference is when the price gets fixed. A change order is agreed and priced before work starts, normally as a lump sum. A change directive is used when there is no time or no agreement: the owner instructs the contractor to proceed and the price is settled afterwards, usually cost plus, meaning actual labour and materials plus an agreed fee. Keep the two axes separate. Extras and credits describe what changed. Orders and directives describe how the price is fixed.",
+    ex: "The owner needs it started Monday with no agreed price, instructing you to proceed and settle on actuals. That is a directive, not an order."
+  },
+  {
+    title: "Diagram 7 — Performance Under Protest",
+    text: "The owner directs work you believe is outside the contract and insists it was always included. Refusing risks breaching the contract. Doing it silently risks a court reading your silence as acceptance that it was in scope all along. Both routes hurt you. What preserves the claim is written notice of protest before you begin, stating that you regard the work as extra and expect additional payment. Complaining after completion is normally too late. The authority is Kiewit.",
+    ex: "You perform the disputed work and claim afterwards. Your silence during it reads as agreement. The notice had to go in before you started."
+  },
+  {
+    title: "Diagram 8 — Pay-If-Paid vs Pay-When-Paid",
+    text: "Pay when paid changes timing only. The general contractor may wait for the owner, but if the owner never pays, the contractor still owes the subcontractor out of its own funds. Pay if paid is a condition precedent, so if the owner never pays, the obligation never arises and the subcontractor may recover nothing. The practical effect is that pay if paid moves the owner's insolvency risk onto the sub. Courts treat that as harsh, so anything short of express condition precedent wording is read as pay when paid.",
+    ex: "Paid within thirty days of the contractor receiving payment is ambiguous, so the sub gets paid. Naming receipt as a condition precedent is not, so the sub may not."
+  },
+  {
+    title: "Diagram 9 — Incorporation by Reference: The Hidden Risk Chain",
+    text: "A subcontractor can be bound by a prime contract it never opened, provided the document was available to be read. This bites hardest on technical content: scope of work, specifications, materials, quality standards. I never saw it is not a defence to any of those. The limit is on buried commercial terms. Courts may decline to enforce an onerous clause hidden where no reasonable subcontractor would think to look, such as a requirement to arbitrate in a distant location.",
+    ex: "Weld quality standards in the prime contract bind you even unread. A distant arbitration venue buried in an appendix may not."
+  },
+  {
+    title: "Diagram 10 — The Unforeseen Conditions Disclaimer Failure",
+    text: "Owners try to shift subsurface risk by requiring bidders to satisfy themselves about everything and accept all the consequences. Courts routinely strike these down for three reasons. The timeline is absurd, because a two week bid period cannot substitute for a proper geotechnical investigation. It backfires commercially, because bidders pad against unknown risk and the owner pays more overall. And concealment defeats it, because an owner cannot withhold a report it already holds and then blame the contractor for not independently finding the same thing. Remove those problems and a reasonably drafted disclaimer can hold.",
+    ex: "The owner sits on a geotechnical report showing bad soil and disclaims all risk anyway. That disclaimer fails on concealment alone."
+  },
+  {
+    title: "Diagram 11 — Coast Hotels: Number of Reviews vs Timing of Reviews",
+    text: "The standard of care on site reviews turns on timing, not count. Exceeding the required number means nothing if the visits cluster away from the moment the defective work was being created and was still visible. The question a court asks is whether you were watching when it mattered. Fifteen badly timed reviews can fail where ten well placed ones succeed. And being underpaid never lowers the standard, because the level of care required does not flex with the fee. The authority is Coast Hotels against Royal Oak Inn.",
+    ex: "Fifteen reviews, every one of them outside the window when the defect was visible. The count is irrelevant and the standard is not met."
+  },
+];
+
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    // While editing is on, clicks land in the text to place the cursor —
+    // don't let that also trigger jump-to-diagram/playback.
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    // Sanity check: warn (don't block) if the picked file doesn't look like this chapter's Explainer.
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      // Prevent Enter from inserting stray line breaks that would break the
+      // narration when it's read aloud; Shift+Enter still works if truly needed.
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+// Turns arbitrary user-typed text into a safe JS string literal so quotes,
+// backslashes, or line breaks the user types can never corrupt the file.
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    // Rebuild each segment's text/ex from the live DOM (current edited values),
+    // keeping titles exactly as they were — titles drive the mind map's audio pairing.
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    // Update the in-memory SEGMENTS + clear dirty markers so it matches what's now on disk.
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

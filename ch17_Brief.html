@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 17 Brief — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 17 — Audio Explainer — Brief</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Three-Party Structure</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 10</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Three-Party Structure and Two Separate Agreements",
+    text: "A bond involves three parties. The principal, who owes the performance. The obligee, usually the owner, who receives the protection. And the surety, who guarantees the principal. But it is not one three way contract. There are two separate agreements: the main contract between contractor and owner, and the bond itself, under which the surety's promise is secondary and only engages once the main contract is breached. Note who pays: the contractor buys the bond, so the owner gets the protection and the cost arrives inside the contractor's price.",
+    ex: "Contract one is the promise to build the warehouse. Contract two is the surety's promise to finish it. Build it properly and contract two never does anything."
+  },
+  {
+    title: "Diagram 2 — Bond vs Insurance: Why a Bond Is Not Insurance",
+    text: "Insurance is a two party arrangement, and when the insurer pays it absorbs the loss and does not come after you. A bond is a three party arrangement, and the surety fully expects its money back. That is the real distinction. A surety is closer to a bank co signing your loan than to an insurer: pay out on your behalf and it will pursue you for every dollar. The premium buys the owner protection, not you.",
+    ex: "Your car insurer never asks for the payout back. A surety that pays an owner a million because your firm failed will sue your firm for that million."
+  },
+  {
+    title: "Diagram 3 — Surety's Recourse After Paying Out: Two Parallel Tracks",
+    text: "Having paid, the surety has two routes to recovery. Subrogation puts it in the owner's position so it can pursue the contractor directly. That route is often worthless in practice, because the contractor who defaulted is usually the contractor who is bankrupt. So sureties rely on the second route, personal indemnity, taken before the bond is ever issued: the company's owners or shareholders sign personal guarantees. That reaches their own houses and savings rather than the empty company.",
+    ex: "Your company collapses and abandons the job. The surety finishes it, cannot recover from the shell, and enforces the personal indemnity against your house."
+  },
+  {
+    title: "Diagram 4 — The Bid Bond Defence-Dependency Rule",
+    text: "The governing principle is that the surety's position can never be worse than the contractor's. Faced with a claim, the surety asks first whether the contractor would actually be liable. If the contractor holds a valid defence, the surety inherits that same defence and pays nothing. So a claim barred because the owner delayed too long, or defeated because the bid was validly revoked, fails against the surety for exactly the same reason. The surety's liability is derivative, never greater than the principal's.",
+    ex: "The owner sues the surety after a contractor walks from a bid, but the owner had altered the design after bids closed. That defence passes straight to the surety."
+  },
+  {
+    title: "Diagram 5 — The Surety's Six Options on Default",
+    text: "The six options run from safe to dangerous, and what varies is whether the surety's exposure stays capped. Paying the face value of the bond, or tendering the work for new bids, keeps the loss limited to the bond amount. Stepping in to complete the work itself is the dangerous end. Do that and the surety effectively becomes the contractor, loses the protection of the cap, and inherits open ended completion costs plus long term warranty liability on work it now owns.",
+    ex: "Writing a cheque for the two million bond limit ends it. Finishing the bridge with its own crews leaves the surety exposed when it fails five years later."
+  },
+  {
+    title: "Diagram 6 — Case Study 17.1: Tracing the Money",
+    text: "The face value of a bond is a ceiling, not an entitlement. Payment tracks the actual proven loss, so a two million dollar bond against a five hundred thousand dollar loss pays five hundred thousand. And the surety does not stop at the contractor. Where a third party's negligence deepened the loss, the surety pursues them directly. In the chapter's case a surety spent one point three million completing a job, found the architect had over certified early work so the owner overpaid the defaulting contractor, and sued the architect for that portion.",
+    ex: "An architect certifies eighty percent complete when the true figure is fifty. The contractor takes the money and goes, and the surety sues the architect for the gap."
+  },
+  {
+    title: "Diagram 7 — The Volunteer Trap",
+    text: "A surety must be certain the contractor has actually defaulted before paying anything. Pay early on the owner's say so, and if a court later finds the contractor was entitled to act as it did, the surety was never legally obliged to pay at all. The law then treats it as a volunteer, and a volunteer cannot recover. The indemnity rights that would normally let it reclaim the money simply do not engage, because there was no obligation to discharge in the first place.",
+    ex: "The owner insists the contractor abandoned the site, so the surety spends a hundred thousand finishing it. A judge finds the contractor stopped because the owner stopped paying."
+  },
+  {
+    title: "Diagram 8 — The Performance Bond Defence Chain",
+    text: "A performance bond does not respond automatically, and the owner's own conduct is what usually defeats the claim. Failing to pay the contractor as required, giving the surety late notice, overpaying the contractor early, or materially changing the project risk without telling the surety will each discharge the surety. The logic is that the surety priced a specific risk, and the owner who quietly altered that risk cannot then demand the guarantee. The safety net fails because the owner damaged it.",
+    ex: "The owner verbally adds a third storey and a pool and never tells the surety. When you fail, the surety refuses, because the risk it guaranteed no longer exists."
+  },
+  {
+    title: "Diagram 9 — Payment Bond Trust Structure: One-Tier Chain",
+    text: "A labour and material payment bond protects those below the main contractor if it becomes insolvent, and it is structured as a trust with the owner holding it for their benefit. The limit that catches people is tiering. Standard Canadian bonds cover one tier only, meaning those in a direct contract with the main contractor. Anyone further down, a supplier who sold to a subcontractor rather than to the main contractor, falls outside the bond entirely and recovers nothing under it.",
+    ex: "The electrician hired directly by the main contractor is paid from the bond. The drywall supplier who sold to a subcontractor is second tier and gets nothing."
+  },
+  {
+    title: "Diagram 10 — Lien Bond vs L&M Payment Bond: Timing Difference",
+    text: "Both deal with non payment, and the difference is when they are used. A labour and material payment bond is proactive, arranged at the start of the project to protect workers and suppliers before anyone has to lien. A lien bond is reactive, bought after a lien has already been registered. It substitutes itself for the property as security, so the claim moves off the title onto the bond and the property can be sold or refinanced while the dispute continues.",
+    ex: "A plumber liens your factory in year two and blocks the sale. A lien bond shifts his claim onto the bond, clearing the title so the sale closes."
+  },
+];
+
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

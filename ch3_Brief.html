@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 3 Brief — Audio Explainer (With Applied Examples)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:8px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:10px;border-radius:6px;}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 3 — Audio Explainer — Brief</h1>
+  <div class="sub">Plain-language narration with strict engineering examples. Tap a number to jump straight to it.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — The Triple-Jeopardy Framework</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 7</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — The Triple-Jeopardy Framework",
+    text: "One mistake can trigger three separate proceedings at once: a criminal prosecution, a civil lawsuit, and a professional disciplinary hearing. Double jeopardy does not prevent this. It only stops the government prosecuting you twice for the same criminal offence, and it says nothing about the other two. The reason all three can land is that the standards of proof differ. Criminal demands proof beyond a reasonable doubt. Civil and disciplinary run on the balance of probabilities, a much lower bar, so an acquittal decides nothing about your licence.",
+    ex: "You are acquitted of defrauding a client because the jury had a doubt. The association applies the lower standard, finds it more likely than not, and revokes your licence."
+  },
+  {
+    title: "Diagram 2 — The Duty Hierarchy: What Outranks What",
+    text: "Five duties, ranked, and the ranking is what resolves the conflict. Public first, client second, employer third, profession fourth, yourself last. The duty to public safety is paramount, meaning it overrides every other duty on the list without exception. Your own interests sit at the bottom deliberately. Fear of being fired is never a valid reason to stay quiet about a safety risk, because the duty ranked above it is the one that governs.",
+    ex: "Your boss orders you to ignore a cracked foundation and threatens your job. Public safety ranks first, your employer third, yourself fifth. You report it."
+  },
+  {
+    title: "Diagram 3 — The Parallel Proceedings Trap",
+    text: "Facing a criminal charge and a disciplinary hearing at the same time creates a direct conflict. In the criminal matter you have the right to remain silent. In the disciplinary matter you feel pressure to explain yourself, because your licence is at stake. The problem is that the disciplinary hearing is transcribed, and prosecutors may use what you said there against you at the criminal trial. The safe move is to apply to have the disciplinary hearing adjourned until the criminal proceeding is finished.",
+    ex: "You are charged over a bridge collapse and the board wants an interview. Defend your licence there and the prosecutor reads your own answers back to you in court."
+  },
+  {
+    title: "Diagram 4 — The Consultant's Three-Way Conflict",
+    text: "When a contractor claims extra money and the owner refuses, the consultant is caught between three pulls: protecting the owner from inflated claims, treating the contractor fairly, and quietly protecting themselves when the claim arises from their own design error. That last one is the real conflict, because you are assessing a problem you may have caused. The obligation is to evaluate it honestly regardless. If the claim is valid you approve it, and you notify your insurer that a claim may be coming rather than concealing it.",
+    ex: "The contractor wants fifty thousand because your drawing omitted the plumbing layout. You approve the fair amount, admit the error, and call your liability insurer."
+  },
+  {
+    title: "Diagram 5 — The Constructive Trust Mechanism",
+    text: "Taking side work your employer could have had breaches your duty of loyalty, and the remedy is harsher than ordinary damages. A constructive trust treats every dollar of that profit as though it had been held for your employer all along, so you surrender the entire profit even where the employer cannot show it lost anything. The point is not to compensate a loss, it is to strip the gain. Written permission from your employer before taking the work is what avoids it.",
+    ex: "You clear five thousand designing a neighbour's patio at weekends. The court applies a constructive trust and the whole five thousand goes to your firm."
+  },
+  {
+    title: "Diagram 6 — The Self-Policing Double Bind",
+    text: "Self policing puts you in a bind with a penalty on both sides. Stay silent about another engineer's dangerous error and you can be disciplined for failing to report it. Accuse them without the full facts and you can be disciplined for unprofessional conduct toward a colleague. The way through is transparent conditionality. You report the concern, you state plainly which assumptions you relied on, and you say your opinion may change if further information appears.",
+    ex: "As an expert witness you say the calculations appear incorrect on the limited data provided, and that you reserve your position if field data is supplied."
+  },
+  {
+    title: "Diagram 7 — The CFPOA Jurisdictional Reach",
+    text: "Canadian criminal law normally reaches only conduct inside Canada. The Corruption of Foreign Public Officials Act breaks that rule. It makes bribing a foreign public official an offence anywhere in the world, and it reaches you through a real connection to Canada, through Canadian citizenship, or through permanent residence. The sting is what comes after. A conviction in Canada does not shield you abroad, because the United States does not treat foreign bribery as covered by double jeopardy and can prosecute the same bribe again.",
+    ex: "As a permanent resident you bribe a Brazilian mayor for a mining permit. Canada prosecutes under the CFPOA, and the United States can prosecute that same bribe afterwards."
+  },
+];
+
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" data-idx="${i}" data-field="text">${seg.text}</div>
+    <div class="ex-text"><strong class="ex-label">Example:</strong> <span class="ex-content" data-idx="${i}" data-field="ex">${seg.ex}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = SEGMENTS[currentIndex].text + " " + SEGMENTS[currentIndex].ex;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// Lets you edit the text/example of any diagram right on this page and
+// save the changes straight back into this .html file on disk.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set(); // "idx-field" keys, e.g. "3-ex"
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.seg-text, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        (el.classList.contains('ex-content') ? el.parentElement : el).classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const textEl = block.querySelector('.seg-text');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    text: ' + toJSStringLiteral(textEl.innerText) + ',');
+      lines.push('    ex: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].text = block.querySelector('.seg-text').innerText.trim();
+      SEGMENTS[i].ex   = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>

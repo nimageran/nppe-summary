@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 10 Brief — Audio Explainer (Unified Narrative)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.08); --text:#1A1F35; --text2:#5B6585; --text3:#9AA0B8;
+  --green:#1D9B6A; --radius:9px; --shadow:0 1px 3px rgba(26,31,53,.07), 0 4px 12px rgba(26,31,53,.04);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:20px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:18px;font-weight:700;margin-bottom:4px;}
+.sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+
+/* Compact, non-frozen player bar: sits at the top of the flow once and
+   scrolls away with the page, instead of sticking and covering content below it. */
+#player{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:16px;}
+#now-playing{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+#now-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;min-height:16px;}
+
+.controls{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.ctrl-btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:opacity .12s;}
+.ctrl-btn:hover{opacity:.88;}
+.ctrl-btn.secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.ctrl-btn:disabled{opacity:.35;cursor:default;}
+.rate-wrap{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);margin-left:auto;}
+.rate-wrap select{border:1px solid var(--border2);border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--text);}
+
+/* Single scrollable row instead of a wrapping grid — this is what made the
+   bar tall enough to swallow the screen on narrower widths. */
+#jumprow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:5px;padding-bottom:3px;}
+#jumprow::-webkit-scrollbar{height:4px;}
+#jumprow::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+.jbtn{flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .1s;}
+.jbtn:hover{background:var(--surface2);}
+.jbtn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.jbtn.done{border-color:var(--green);color:var(--green);}
+
+#progress-line{font-size:10px;color:var(--text3);margin-top:6px;}
+
+#edit-bar{display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap;}
+#edit-status{font-size:11px;color:var(--text3);}
+#edit-status.err{color:#C0392B;font-weight:600;}
+#edit-status.ok{color:var(--green);font-weight:600;}
+
+.seg-text.editing,.ex-text.editing{outline:2px solid var(--accent);outline-offset:2px;background:var(--accent-t);cursor:text;}
+.seg-text.dirty,.ex-text.dirty{border-left:3px solid #E8A33D;padding-left:8px;}
+.edit-hint{font-size:10px;color:var(--accent);margin-top:4px;font-style:italic;}
+
+#script{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);}
+.seg{padding:18px 22px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.seg:last-child{border-bottom:none;}
+.seg:hover{background:var(--surface2);}
+.seg.active{background:var(--accent-t);border-left:3px solid var(--accent);padding-left:19px;}
+.seg-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:var(--surface2);border:1px solid var(--border2);font-size:11px;font-weight:700;color:var(--text2);margin-right:8px;}
+.seg.active .seg-num{background:var(--accent);border-color:var(--accent);color:#fff;}
+.seg-title{display:inline;font-size:13.5px;font-weight:600;color:var(--text);}
+.seg-text{margin-top:8px;font-size:13.5px;color:var(--text2);line-height:1.65;}
+.ex-text{margin-top:12px;font-size:13.5px;color:var(--text);font-weight:600;background:var(--surface2);padding:12px;border-radius:6px;border-left:4px solid var(--accent);}
+
+.hint{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Chapter 10 — Audio Explainer — Brief</h1>
+  <div class="sub">Progressive narrative explanations with applied examples. Tap a number to jump.</div>
+
+  <div id="player">
+    <div id="now-playing">Up next</div>
+    <div id="now-title">Diagram 1 — Choosing a Process</div>
+
+    <div class="controls">
+      <button class="ctrl-btn" id="btn-play">▶ Play</button>
+      <button class="ctrl-btn secondary" id="btn-pause" disabled>⏸ Pause</button>
+      <button class="ctrl-btn secondary" id="btn-stop" disabled>⏹ Stop</button>
+      <div class="rate-wrap">
+        <span>Speed</span>
+        <select id="rate-select">
+          <option value="0.8">0.8×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="jumprow"></div>
+    <div id="progress-line">Diagram 1 of 10</div>
+
+    <div id="edit-bar">
+      <button class="ctrl-btn secondary" id="btn-enable-edit">📝 Enable Editing</button>
+      <button class="ctrl-btn" id="btn-save-edit" style="display:none;">💾 Save to File</button>
+      <span id="edit-status"></span>
+    </div>
+  </div>
+
+  <div id="script"></div>
+
+  <div class="hint">Uses your browser's built-in voice — no audio files, no internet required after the page loads.</div>
+</div>
+
+<script>
+const SEGMENTS = [
+  {
+    title: "Diagram 1 — Choosing a Process: Matching Method to Project Need",
+    explanation: "Two procurement routes with different rules. An invitation to tender is about price: you specify what you want and normally take the lowest acceptable bid, with no negotiating afterwards. A request for proposals is about solution: bidders put forward different approaches, and you can score them on a matrix covering price, quality, experience and design, and you can negotiate. The legal danger is mixing them. Run a tender and then start negotiating with bidders, and a court may find you breached the rules of your own tender and hold you liable.",
+    example: "Five hundred standard pipes suit a tender. A custom robotics sorter suits an RFP. Negotiating the pipe prices mid tender is what gets you sued."
+  },
+  {
+    title: "Diagram 2 — The Contract A / Contract B Formation Mechanism",
+    explanation: "Submitting a compliant bid creates a contract before any construction contract exists. Each compliant bid forms Contract A between the owner and that bidder. The bidder cannot withdraw, and the owner must treat all bidders fairly. Five compliant bids means five separate Contract A's. Contract B is the actual construction contract, signed only with the winner. A bid that is non compliant or late forms no Contract A at all. That structure is why an owner can be sued by bidders who never got the work.",
+    example: "Accept a late sixth bid and the five compliant bidders can sue you, not for losing the job, but for breaching their Contract A rights."
+  },
+  {
+    title: "Diagram 3 — Ron Engineering, MJB, and Tercon: The Evolving Test",
+    explanation: "Three Supreme Court decisions built the Contract A test. Ron Engineering established that a bidding process can itself create a contract. MJB held that whether Contract A exists depends on what the documents and the parties' intentions actually show. Tercon confirmed that a document's title does not decide what it legally is. Label something an informal request and declare that no Contract A arises, and it makes no difference if the document imposes strict deadlines, demands a bid bond and sets mandatory evaluation rules. Courts read the body, not the cover.",
+    example: "Your informal request demands a fifty thousand dollar bid bond and a hard Tuesday deadline. The disclaimer is ignored and Contract A applies."
+  },
+  {
+    title: "Diagram 4 — The Fairness Paradox: Process vs Application of Process",
+    explanation: "The rules do not have to be fair. Applying them does. While designing the tender the owner is spending its own money and owes the market no obligation of fairness, so it can lawfully favour local contractors, weight past relationships, or demand proprietary technology. Once the documents are published and bids come in, Contract A attaches an implied duty of fairness, and that duty is about consistent and transparent application of the published rules. Departing secretly from your own scoring matrix is what breaches it.",
+    example: "A fifteen percent local bonus written into the tender is legal. Quietly ignoring your own bonus so an outsider can win is the breach."
+  },
+  {
+    title: "Diagram 5 — The Privilege Clause Boundary",
+    explanation: "Almost every tender says the lowest or any bid may not be accepted, and owners over read it. It is not unfettered discretion. It protects you from bypassing the lowest compliant bid only where the alternative evaluation criteria, such as safety record, schedule or experience, were disclosed in the tender documents. It confers no right to evaluate on undisclosed criteria. Disclosed reasons are protected. Secret ones are not.",
+    example: "Skip the low bidder on safety and you are covered if safety was stated as a criterion. Say nothing about safety in the documents and you lose."
+  },
+  {
+    title: "Diagram 6 — Bid Shopping: Improper but Not Illegal",
+    explanation: "Bid shopping is using one subcontractor's confidential quote to pressure a competitor into undercutting it before the prime contract is awarded. Construction associations condemn it, and Canadian courts have generally held that it is not illegal. The reasoning is circular but real: to be a binding industry custom the industry has to actually follow the practice, and because bid shopping is so widespread there is no established custom being breached. Unethical, widely practised, and usually leaving the victim without a remedy.",
+    example: "You take a fifty thousand roofing quote to a rival and ask for forty five. The first roofer will probably lose if he sues you."
+  },
+  {
+    title: "Diagram 7 — The Mistake-Withdrawal Test",
+    explanation: "Once the deadline passes, a bidder cannot simply withdraw over an internal calculation error without forfeiting the bid bond. Withdrawal requires two things together. The error must be material, meaning significant against the total project cost. And it must be a mistake on the face of the bid, obvious enough that a reasonable owner reviewing it should have recognised it. Separately, courts distinguish a clerical mistake from an error of judgment. Choosing a risky cheaper method that then fails is judgment, and it binds you to your price.",
+    example: "You priced a tunnel for shovels and hit granite. That is a bad judgment call, not a typo, so the forty thousand overrun is yours."
+  },
+  {
+    title: "Diagram 8 — Subcontract Crystallization: When Is a Sub Actually Bound?",
+    explanation: "The question is whether the general contractor named the subcontractor. Under Westgate, where the general explicitly names a sub in its successful prime bid, the subcontract crystallizes and binds the moment the owner unconditionally accepts that bid, even before the sub has been told. Under Ron Brown, where the general merely used the sub's price to build its own number without naming them, there is no mutuality of obligation and the general is free to hire someone else. Naming is the trigger.",
+    example: "You used the electrician's hundred thousand quote in your total but never wrote his name in the submission. You can hire cheaper and owe him nothing."
+  },
+  {
+    title: "Diagram 9 — The Bid Depository Anti-Shopping Mechanism",
+    explanation: "A bid depository is an administrative mechanism built to make bid shopping physically impossible. Subcontractors submit sealed bids into the depository a set period before the prime deadline, commonly twenty four hours. The general collects them and is bound by the depository rules to carry the lowest conforming bid for each trade. If the general wants to self perform a trade, it loses its inherent advantage and has to submit its own sealed bid into the same blind competition, winning that scope only by genuinely being cheapest.",
+    example: "The drywall quote arrives sealed. The general cannot show it to a rival for a counter offer, and to do the work in house must have bid it blind."
+  },
+  {
+    title: "Diagram 10 — The Trade Agreement Threshold Gate",
+    explanation: "Government procurement is governed by domestic and international trade agreements such as CFTA and CETA, but only above set monetary thresholds. Cross a threshold and binding transparency, accessibility and non discrimination obligations attach. If you believe those rules were breached, for instance by restrictive specifications written to favour a local supplier, you do not go to an ordinary court. You file with the Canadian International Trade Tribunal, and the limitation period is ten days from when the breach became known. Miss it and the right to dispute is gone entirely.",
+    example: "You spot rigged specifications on a five million dollar federal highway job and take twelve days gathering evidence. Two days late and the complaint is dead."
+  },
+];
+
+let currentIndex = 0;
+let isPlaying = false;
+let isPaused = false;
+let utterance = null;
+
+const jumprow = document.getElementById('jumprow');
+const scriptBox = document.getElementById('script');
+const nowTitle = document.getElementById('now-title');
+const nowPlaying = document.getElementById('now-playing');
+const progressLine = document.getElementById('progress-line');
+const btnPlay = document.getElementById('btn-play');
+const btnPause = document.getElementById('btn-pause');
+const btnStop = document.getElementById('btn-stop');
+const rateSelect = document.getElementById('rate-select');
+
+SEGMENTS.forEach((seg, i) => {
+  const jb = document.createElement('button');
+  jb.className = 'jbtn';
+  jb.textContent = i + 1;
+  jb.title = seg.title;
+  jb.onclick = () => jumpTo(i, true);
+  jumprow.appendChild(jb);
+
+  const block = document.createElement('div');
+  block.className = 'seg';
+  block.id = 'seg-' + i;
+  
+  block.innerHTML = `
+    <span class="seg-num">${i+1}</span>
+    <span class="seg-title">${seg.title.replace(/^Diagram \d+ — /,'')}</span>
+    <div class="seg-text" style="margin-top:12px;"><strong>The Explanation:</strong><br/><span class="expl-content" data-idx="${i}" data-field="explanation">${seg.explanation}</span></div>
+    <div class="ex-text"><strong>The Applied Example:</strong><br/><span class="ex-content" data-idx="${i}" data-field="example">${seg.example}</span></div>
+  `;
+  block.onclick = (e) => {
+    if (editingEnabled) return;
+    jumpTo(i, true);
+  };
+  scriptBox.appendChild(block);
+});
+
+function refreshUI() {
+  document.querySelectorAll('.jbtn').forEach((b, i) => {
+    b.classList.toggle('active', i === currentIndex && isPlaying);
+    b.classList.toggle('done', i < currentIndex);
+  });
+  document.querySelectorAll('.seg').forEach((s, i) => {
+    s.classList.toggle('active', i === currentIndex);
+  });
+  nowTitle.textContent = SEGMENTS[currentIndex].title;
+  nowPlaying.textContent = isPlaying ? (isPaused ? 'Paused' : 'Now playing') : 'Up next';
+  progressLine.textContent = `Diagram ${currentIndex + 1} of ${SEGMENTS.length}`;
+  btnPlay.disabled = isPlaying && !isPaused;
+  btnPause.disabled = !isPlaying || isPaused;
+  btnStop.disabled = !isPlaying;
+  if (isPlaying) {
+    const el = document.getElementById('seg-' + currentIndex);
+    if (el) el.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+}
+
+function speakCurrent() {
+  window.speechSynthesis.cancel();
+  
+  const fullAudioText = "The Explanation. " + SEGMENTS[currentIndex].explanation + " The Applied Example. " + SEGMENTS[currentIndex].example;
+  
+  utterance = new SpeechSynthesisUtterance(fullAudioText);
+  utterance.rate = parseFloat(rateSelect.value);
+  utterance.onend = () => {
+    if (currentIndex < SEGMENTS.length - 1) {
+      currentIndex++;
+      refreshUI();
+      speakCurrent();
+    } else {
+      isPlaying = false;
+      isPaused = false;
+      refreshUI();
+    }
+  };
+  isPlaying = true;
+  isPaused = false;
+  refreshUI();
+  window.speechSynthesis.speak(utterance);
+}
+
+function jumpTo(i, autoplay) {
+  currentIndex = i;
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+  if (autoplay) speakCurrent();
+}
+
+btnPlay.onclick = () => {
+  if (isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    isPlaying = true;
+    refreshUI();
+  } else {
+    speakCurrent();
+  }
+};
+btnPause.onclick = () => {
+  window.speechSynthesis.pause();
+  isPaused = true;
+  refreshUI();
+};
+btnStop.onclick = () => {
+  window.speechSynthesis.cancel();
+  isPlaying = false;
+  isPaused = false;
+  refreshUI();
+};
+rateSelect.onchange = () => {
+  if (isPlaying) speakCurrent();
+};
+
+window.addEventListener('beforeunload', () => window.speechSynthesis.cancel());
+
+refreshUI();
+
+// --- INLINE EDITING + DIRECT FILE SAVE ---
+// This chapter's SEGMENTS use "explanation"/"example" field names (not "text"/"ex"
+// like the other chapters), so the save logic below is adapted to match.
+let editingEnabled = false;
+let fileHandle = null;
+let dirtyFields = new Set();
+
+const btnEnableEdit = document.getElementById('btn-enable-edit');
+const btnSaveEdit   = document.getElementById('btn-save-edit');
+const editStatus    = document.getElementById('edit-status');
+
+function setEditStatus(msg, cls) {
+  editStatus.textContent = msg;
+  editStatus.className = cls || '';
+}
+
+btnEnableEdit.onclick = async () => {
+  if (!('showOpenFilePicker' in window)) {
+    setEditStatus('Your browser doesn\'t support direct file saving (needs Chrome or Edge). Edit in a text editor instead.', 'err');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'HTML files', accept: { 'text/html': ['.html'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false
+    });
+    const expectedName = document.title.match(/Chapter (\d+)/);
+    if (expectedName && !handle.name.toLowerCase().includes(`ch${expectedName[1]}_explainer`)) {
+      const proceed = confirm(`You picked "${handle.name}", but this page is "${document.title}". Continue anyway?`);
+      if (!proceed) return;
+    }
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      setEditStatus('Permission to edit was not granted.', 'err');
+      return;
+    }
+    fileHandle = handle;
+    editingEnabled = true;
+    document.querySelectorAll('.expl-content, .ex-content').forEach(el => {
+      el.contentEditable = 'true';
+      el.classList.add('editing');
+      el.addEventListener('input', () => {
+        const key = el.dataset.idx + '-' + el.dataset.field;
+        dirtyFields.add(key);
+        el.parentElement.classList.add('dirty');
+        btnSaveEdit.textContent = `💾 Save to File (${dirtyFields.size} unsaved)`;
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+      });
+    });
+    btnEnableEdit.style.display = 'none';
+    btnSaveEdit.style.display = 'inline-flex';
+    setEditStatus('Editing on — click any explanation or example to change it.', 'ok');
+  } catch (err) {
+    if (err.name !== 'AbortError') setEditStatus('Could not open file: ' + err.message, 'err');
+  }
+};
+
+function toJSStringLiteral(raw) {
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+  return '"' + cleaned.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+btnSaveEdit.onclick = async () => {
+  if (!fileHandle) return;
+  if (dirtyFields.size === 0) {
+    setEditStatus('Nothing to save — no changes made yet.', '');
+    return;
+  }
+  try {
+    setEditStatus('Saving…', '');
+
+    const lines = ['const SEGMENTS = ['];
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      const explEl = block.querySelector('.expl-content');
+      const exEl   = block.querySelector('.ex-content');
+      const title  = SEGMENTS[i].title;
+      lines.push('  {');
+      lines.push('    title: ' + toJSStringLiteral(title) + ',');
+      lines.push('    explanation: ' + toJSStringLiteral(explEl.innerText) + ',');
+      lines.push('    example: ' + toJSStringLiteral(exEl.innerText));
+      lines.push('  },');
+    });
+    lines.push('];');
+    const newBlock = lines.join('\n') + '\n';
+
+    const file = await fileHandle.getFile();
+    const currentText = await file.text();
+    const s = currentText.indexOf('const SEGMENTS = [');
+    const e = currentText.indexOf('let currentIndex = 0;');
+    if (s === -1 || e === -1) throw new Error('Could not locate the SEGMENTS block in the file — nothing was saved.');
+
+    const newFileText = currentText.slice(0, s) + newBlock + currentText.slice(e);
+    const writable = await fileHandle.createWritable();
+    await writable.write(newFileText);
+    await writable.close();
+
+    document.querySelectorAll('.seg').forEach((block, i) => {
+      SEGMENTS[i].explanation = block.querySelector('.expl-content').innerText.trim();
+      SEGMENTS[i].example     = block.querySelector('.ex-content').innerText.trim();
+      block.querySelectorAll('.dirty').forEach(el => el.classList.remove('dirty'));
+    });
+    dirtyFields.clear();
+    btnSaveEdit.textContent = '💾 Save to File';
+    setEditStatus(`Saved — ${new Date().toLocaleTimeString()}. Refresh anytime to confirm.`, 'ok');
+  } catch (err) {
+    setEditStatus('Save failed: ' + err.message, 'err');
+  }
+};
+// --- END INLINE EDITING ---
+
+</script>
+</body>
+</html>
