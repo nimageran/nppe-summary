@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Practical Law — Flashcards</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFF; --surface2:#EEF1F8; --border:#DDE2EE; --border2:#C8CEDD;
+  --accent:#2056C8; --accent-t:rgba(32,86,200,.07);
+  --text:#1A1F35; --text2:#4E5877; --text3:#98A0B8;
+  --green:#1D9B6A; --amber:#B4741A;
+  --shadow:0 1px 3px rgba(26,31,53,.07),0 8px 24px rgba(26,31,53,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);
+     padding:16px 14px calc(20px + env(safe-area-inset-bottom));min-height:100vh;}
+.wrap{max-width:640px;margin:0 auto;}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+h1{font-size:16px;font-weight:700;}
+.count{font-size:12px;font-weight:600;color:var(--text2);background:var(--surface);
+        border:1px solid var(--border2);border-radius:7px;padding:3px 9px;white-space:nowrap;}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;}
+.chip{min-width:30px;height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--border2);
+       background:var(--surface);color:var(--text2);font-size:12.5px;font-weight:600;cursor:pointer;
+       font-family:inherit;display:inline-flex;align-items:center;justify-content:center;}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:14px;}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s;}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+       box-shadow:var(--shadow);padding:22px 20px;min-height:290px;
+       display:flex;flex-direction:column;cursor:pointer;}
+.tag{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+      color:var(--text3);margin-bottom:14px;}
+.q{font-size:18px;line-height:1.55;font-weight:600;}
+.a{font-size:16px;line-height:1.7;color:var(--text2);margin-top:16px;padding-top:16px;
+    border-top:1px solid var(--border);}
+.tapme{margin-top:auto;padding-top:18px;font-size:12.5px;color:var(--text3);text-align:center;}
+
+.acts{display:flex;gap:9px;margin-top:14px;}
+.acts button{flex:1;border-radius:10px;padding:14px 8px;font-family:inherit;font-size:14.5px;
+              font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface);
+              color:var(--text2);}
+.acts .good{background:var(--green);border-color:var(--green);color:#fff;}
+.acts .again{background:var(--surface);border-color:rgba(180,116,26,.5);color:var(--amber);}
+.nav{display:flex;gap:9px;margin-top:9px;}
+.nav button{flex:1;border:none;background:none;color:var(--text3);font-family:inherit;
+             font-size:12.5px;font-weight:600;cursor:pointer;padding:9px;}
+.nav button:hover{color:var(--accent);}
+
+.done{text-align:center;padding:40px 20px;background:var(--surface);border:1px solid var(--border);
+       border-radius:14px;box-shadow:var(--shadow);}
+.done .big{font-size:42px;font-weight:700;color:var(--accent);}
+.done p{color:var(--text2);font-size:14px;margin-top:6px;}
+.done button{margin-top:20px;background:var(--accent);color:#fff;border:none;border-radius:10px;
+              padding:13px 26px;font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>Practical Law — Flashcards</h1><div class="count" id="count">—</div></div>
+  <div class="chips" id="chips"></div>
+  <div class="bar"><i id="bar"></i></div>
+  <div id="stage"></div>
+</div>
+
+<script>
+const CARDS = [{"ch": 1, "n": 1, "f": "A dispute over a construction contract in Manitoba — is that governed by federal or provincial law? And which construction-related offence is federal instead?", "b": "Provincial. Contracts, negligence, liens and the regulation of engineers are all provincial matters. Federal covers national concerns: criminal law, patents, competition law, and industries crossing provincial lines like airlines and railways. The exception to watch is bid-rigging and price-fixing — those are federal offences under the Competition Act, even though the contract underneath them is provincial."}, {"ch": 1, "n": 2, "f": "Are a territory's laws weaker than a province's? Does it matter for an engineer working in Yukon?", "b": "Not in practice. The difference is only where the power comes from: a province draws its authority directly from the Constitution, while a territory's is delegated by the federal government and could in principle be changed. Day to day it makes no difference. Territories license engineers and pass building acts exactly as provinces do, and those rules are fully valid law inside the territory."}, {"ch": 1, "n": 3, "f": "A federal law and a provincial law both cover the same subject and seem to disagree. Which one do you follow?", "b": "Both, normally. The default is that both apply and you comply with both. Federal law only overrides where there is a direct operational conflict, meaning it is literally impossible to obey both at once. Even then the provincial law falls away only to the extent of that conflict, not entirely. Difficulty and inconvenience are not conflict. Only impossibility is."}, {"ch": 1, "n": 4, "f": "Which court hears a serious engineering lawsuit, and can a judgment from one province be enforced in another?", "b": "Superior trial courts hear the real engineering lawsuits, and they hold inherent jurisdiction — historical power to order people to act even without a specific statute authorising it. Below them, lower provincial courts handle small claims; above them, courts of appeal hold no new trial and only check whether the judge below made a legal error. A judge's power stops at the provincial border, so an Ontario judgment must be taken to a Manitoba court to be enforced there. Only the Supreme Court of Canada binds every province."}, {"ch": 1, "n": 5, "f": "You lost a ten-million-dollar construction appeal. Can you take it to the Supreme Court of Canada?", "b": "Almost certainly not. There is no automatic right of appeal — you must first be granted leave, meaning permission, and leave is refused unless the case raises an issue of national importance. Most engineering and construction disputes are arguments about money or contract terms affecting only the parties involved. However large the sum, the Court of Appeal decision is usually the end of the road."}, {"ch": 1, "n": 6, "f": "A private engineering firm fires you because of your religion. Is that a Charter violation?", "b": "No. The Charter restrains government only — police, legislatures and state agencies. It does nothing at all against a private employer, company or landlord. For discrimination by a private firm you use the provincial human rights code instead. This split is a standard exam trap. If a government law had discriminated, the Charter would apply, and you would raise it in a superior trial court where a judge can strike the law down."}, {"ch": 1, "n": 7, "f": "What is the difference between statute law and common law, and how does a judge quietly expand a statute?", "b": "Statutes are written by legislatures; common law is built from accumulated judicial decisions. Officially judges only interpret statutes — but a vague statute forces a judge to decide what it means, and that decision becomes a rule for later cases, so interpretation expands the law in practice. Where no statute exists at all, as with most of the rules on how contracts are formed, common law governs entirely."}, {"ch": 1, "n": 8, "f": "Does Quebec's civil law system change how your patent works, or how a supplier contract is decided?", "b": "Only the contract. Quebec runs on French civil law, where the rules are set out in the Civil Code, but that applies only to private law — contracts, negligence and similar matters. Federal subjects including criminal law and patents are identical across the country, so your patent works the same in Montreal and Winnipeg. For a commercial dispute the judge reads the Civil Code rather than old English cases, though the outcome is often close to what it would be elsewhere."}, {"ch": 1, "n": 9, "f": "You build something carelessly for a client and it injures them. Can they sue you in contract and in tort at the same time?", "b": "Yes. Contract duties are voluntary — you accepted them by agreeing. Tort duties are imposed — the law requires everyone to take reasonable care regardless of what they signed. One mistake can breach both at once, because you can break a promise you made and be careless at the same time. Contract is 'I promised to do this.' Tort is 'the law says I must not harm.'"}, {"ch": 1, "n": 10, "f": "A TN visa lets you work in the United States. Does it let you offer engineering services there?", "b": "No. A right to work and a right to practise are two separate doors. The TN visa, which now continues under CUSMA, is purely an immigration instrument — it lets you enter and hold an eligible job without being refused entry or removed. It grants no right whatsoever to offer engineering services or seal drawings. Licensure is decided separately by the local engineering board on its own education, experience and examination requirements."}, {"ch": 1, "n": 11, "f": "What does a neutral citation like 2000 SCC 60 tell you, and how does it differ from the older citation style?", "b": "It identifies the decision itself: the year, the court that decided it, and the decision number for that year — so this is the sixtieth decision issued by the Supreme Court of Canada in 2000. No library required. The older style was built for printed volumes and tells you where the case sits on a shelf instead: the year, the volume number, the reporting series, and the page where the case begins."}, {"ch": 2, "n": 1, "f": "Why does government let engineers regulate themselves, and what happens if the association starts protecting its members?", "b": "It is a trade. Government grants the association a monopoly over who may practise and who may use the protected titles; in return the association undertakes to use that power to protect the public. The direction matters — it is not a union, and it exists to guard the public from bad engineering rather than to advance engineers' interests. If it starts shielding members instead, government can withdraw the monopoly and regulate the profession directly."}, {"ch": 2, "n": 2, "f": "Can you commit an offence by calling yourself an engineer even if you never do any engineering work?", "b": "Yes. Right to title and right to practice are two separate protections. Title means only registered members may call themselves engineers; practice means only registered members may perform the work. Putting P.Eng. on a business card before you are licensed breaches title protection on its own. Engineering and architecture carry both protections. Geoscience in some provinces has title protection only, so the work itself is open to anyone who avoids using the protected title."}, {"ch": 2, "n": 3, "f": "What are the five licensing requirements, and can a strong record in one make up for a weak one in another?", "b": "No — all five are mandatory with no averaging between them. Academic qualifications; engineering experience, usually four years and commonly with at least one year in a Canadian context; language ability in English or French; good character; and the NPPE. Failing any single one blocks the licence however strong the others are. Good character is the one people underestimate, and dishonesty on the application itself is usually what triggers it."}, {"ch": 2, "n": 4, "f": "An unlicensed person is selling engineering designs. Does the association discipline them?", "b": "No — that is enforcement, not discipline, and the dividing question is membership rather than seriousness. Discipline is internal and applies to licensed members: the association investigates and penalises its own with a fine, suspension or revocation. Enforcement is external and applies to unlicensed people practising illegally: the association goes to court and asks a judge to stop them, typically with an injunction."}, {"ch": 2, "n": 5, "f": "A client complains about your work to the association. What actually happens next?", "b": "A fixed sequence. The association investigates first, gathering evidence and deciding whether the complaint is substantiated or frivolous. If it proceeds, it goes to a disciplinary hearing — a formal proceeding rather than a meeting: evidence is presented, witnesses are cross-examined, and both sides may be represented by counsel. A finding against you can bring a fine, a suspension, or revocation of your licence."}, {"ch": 2, "n": 6, "f": "Your seal on a drawing certifies what, exactly? Is stamping a junior engineer's work acceptable?", "b": "It certifies one of exactly three things: you prepared the document, you directly supervised the person who prepared it, or you reviewed it in enough detail to take responsibility for it. Nothing else qualifies. Stamping a junior's work is fine only if you genuinely supervised or thoroughly reviewed it — sealing because you were asked, because it is routine, or because someone is waiting is the failure mode. The seal is a legal assumption of personal responsibility, so if it is on the document the law treats the work as yours."}, {"ch": 3, "n": 1, "f": "You are acquitted in criminal court over a professional failure. Does that protect you from a lawsuit or from losing your licence?", "b": "No. One mistake can trigger three separate proceedings at once — a criminal prosecution, a civil lawsuit, and a professional disciplinary hearing. Double jeopardy only stops the government prosecuting you twice for the same criminal offence; it says nothing about the other two. The reason all three survive is that the standards of proof differ. Criminal demands proof beyond a reasonable doubt, while civil and disciplinary run on the balance of probabilities, a much lower bar."}, {"ch": 3, "n": 2, "f": "Your employer orders you to ignore a safety problem and threatens your job if you report it. Which duty wins?", "b": "Public safety. The five duties rank in order: public first, client second, employer third, profession fourth, yourself last. The duty to public safety is paramount, meaning it overrides every other duty on the list without exception. Your own interests sit at the bottom deliberately — fear of being fired is never a valid reason to stay quiet about a safety risk, because the duty ranked above it is the one that governs."}, {"ch": 3, "n": 3, "f": "You face a criminal charge and a disciplinary hearing over the same incident. Should you explain yourself at the hearing?", "b": "Not without dealing with the conflict first. In the criminal matter you have the right to remain silent; in the disciplinary matter you feel pressure to explain yourself because your licence is at stake. The problem is that the disciplinary hearing is transcribed, and prosecutors may use what you said there against you at the criminal trial. The safe move is to apply to have the disciplinary hearing adjourned until the criminal proceeding is finished."}, {"ch": 3, "n": 4, "f": "A contractor claims extra money because of an error in your own design. What are you obliged to do?", "b": "Evaluate the claim honestly, approve it if it is valid, and notify your insurer that a claim against you may be coming. You are caught between three pulls: protecting the owner from inflated claims, treating the contractor fairly, and quietly protecting yourself. That last one is the real conflict, because you are assessing a problem you may have caused. Concealing it makes your position worse, not better."}, {"ch": 3, "n": 5, "f": "You made five thousand dollars on weekend side work your employer could have taken. What can they recover?", "b": "All of it. Taking side work your employer could have had breaches your duty of loyalty, and the remedy is harsher than ordinary damages. A constructive trust treats every dollar of that profit as though it had been held for your employer all along, so you surrender the entire profit even where the employer cannot show it lost anything. The point is not to compensate a loss but to strip the gain. Written permission from your employer before taking the work is what avoids it."}, {"ch": 3, "n": 6, "f": "You suspect another engineer's design is dangerous but you do not have all the facts. Speak up or stay quiet?", "b": "Speak up, but conditionally. Both silences are punished: stay quiet about a dangerous error and you can be disciplined for failing to report it; accuse without the full facts and you can be disciplined for unprofessional conduct toward a colleague. The way through is transparent conditionality — report the concern, state plainly which assumptions you relied on, and say your opinion may change if further information appears."}, {"ch": 3, "n": 7, "f": "You bribe a foreign official abroad and are convicted in Canada. Can another country prosecute you for the same bribe?", "b": "Yes. The Corruption of Foreign Public Officials Act makes bribing a foreign public official an offence anywhere in the world, reaching you through a real connection to Canada, through Canadian citizenship, or through permanent residence — an exception to the normal rule that Canadian criminal law covers only conduct inside Canada. The sting is that a Canadian conviction does not shield you abroad: the United States does not treat foreign bribery as covered by double jeopardy and can prosecute the same bribe afterwards."}, {"ch": 4, "n": 1, "f": "You buy a rural lot to build a plant. Does that include the minerals underneath it?", "b": "Not necessarily. Real property is land plus whatever is permanently attached to it; personal property is everything else, dividing again into chattels you can touch and intangibles such as patents and licences. Mineral rights can be severed from surface ownership, and in much of Canada they belong to the Crown. So buying the land does not automatically buy what lies below it, and someone else may be licensed to reach it."}, {"ch": 4, "n": 2, "f": "You bolt a machine to the floor of a rented building. Can you take it with you when you leave?", "b": "It depends on why you bolted it down. Two factors decide it: how permanently it is fixed, and the purpose of attachment. Bolted so the machine itself runs properly — to stop it vibrating or walking across the floor — it stays a chattel and leaves with you. Bolted to improve the land or the building, it becomes a fixture and belongs to the property. How tight the bolts are proves nothing on its own; purpose at the moment of attachment governs."}, {"ch": 4, "n": 3, "f": "Two business partners own a building together and one of them dies. Where does the dead partner's share go?", "b": "It depends which form of co-ownership they used, and survivorship is the whole difference. Under a joint tenancy the owners hold as one undivided unit, so the share passes automatically to the survivor and the heirs receive nothing from it. Under a tenancy in common each holds a separate share, which may be unequal, and there is no survivorship — so the share goes to the estate, and the surviving partner can end up co-owning the building with the dead partner's family."}, {"ch": 4, "n": 4, "f": "You sell your property. Which promises attached to it bind the new owner, and which die with you?", "b": "Negative promises travel with the land; positive ones usually do not. An interest that runs with the land is attached to the property itself and binds every future owner whether they agreed to it or not. Easements run, and so do negative covenants — promises not to do something, such as not building above a set height. Positive covenants, promises to actually do something like maintaining a fence or sharing costs, normally do not carry over, and neither do personal licences."}, {"ch": 4, "n": 5, "f": "How do you check who owns a piece of land, and why is the answer different in Manitoba than in parts of eastern Canada?", "b": "Two different systems. Torrens, used across much of western Canada including Manitoba, keeps one live record per parcel — the certificate of title shows the current owner and every lien or claim against it, so you check a single document. The registry system, still used in parts of eastern Canada, stores the accumulated historical documents instead, with no single current record, so ownership is proved by tracing the chain of transactions backwards."}, {"ch": 4, "n": 6, "f": "Rank these from strongest to weakest right in land: easement, licence, lease, restrictive covenant, mortgage.", "b": "Lease, mortgage, easement, restrictive covenant, licence. A lease is strongest — exclusive possession for a term, and the tenant can shut others out, often including the owner. A mortgage is not ownership at all but security, the lender's real right being to sell on default. An easement is a limited right to use part of another's land for a set purpose. A restrictive covenant controls what the owner may do. A licence is bare permission, temporary and usually revocable."}, {"ch": 4, "n": 7, "f": "You have a clever idea for a manufacturing method but have not written or built anything yet. What protects it?", "b": "Only secrecy. A pure idea fits none of the registered rights, so trade secret — keeping the information confidential — is the only route left. The others each cover something specific: copyright is automatic on creation and covers original works such as drawings, software and writing; patents cover new and useful inventions, product or process; trademarks cover brand names, logos and slogans; industrial design covers how a mass-produced article looks; and integrated circuit topography covers chip layout."}, {"ch": 4, "n": 8, "f": "How long does each intellectual property right last, and which one can be renewed indefinitely?", "b": "Trademark is the only one that renews indefinitely — it runs in ten-year terms, though it can still be lost by not using it or by failing to stop others misusing it. Copyright runs for the author's life plus seventy years. A patent runs twenty years from the filing date, not from the day it is granted. Industrial design runs to whichever comes later: ten years from registration or fifteen years from filing. Integrated circuit topography runs ten years."}, {"ch": 5, "n": 1, "f": "Your business partner makes a mistake while you are on vacation and the client sues. Can they take your house?", "b": "It depends entirely on your business structure, and the question is always whose assets pay. In a sole proprietorship you and the business are the same thing, so your house is exposed. In a plain partnership you are jointly liable, so your partner's mistake can reach your personal accounts even though you did none of the work. A limited liability partnership shields your personal assets from your partner's negligence. A corporation puts the shield all the way around, trapping liability inside the company."}, {"ch": 5, "n": 2, "f": "You share an office with another engineer and split the profits on overflow work. Have you formed a partnership?", "b": "Quite possibly, even with nothing signed. The law reads your conduct, not your paperwork. Running a business together, sharing profits, sharing expenses and making decisions jointly can make you partners even though you never used the word. What it takes is a continuous pattern of behaving like co-owners — one shared project on one occasion usually does not do it. Once you are partners, you carry full liability for the other person's work."}, {"ch": 5, "n": 3, "f": "You invested as a limited partner. What could expose you to liability beyond the amount you put in?", "b": "Getting involved in management. Your liability is capped at the amount invested, but only while you stay passive — money in, hands off. The moment you give management orders, direct the project, or provide engineering services, the cap disappears and the law treats you as a general partner with unlimited personal liability. The trigger is taking part in management, not the size of the investment, so a single instruction to the crew can do it."}, {"ch": 5, "n": 4, "f": "Your corporation goes bankrupt owing a supplier fifty thousand dollars. Will a court make you pay it personally?", "b": "Almost certainly not. The corporate shield is far stronger than people expect. Courts do not lift it just because the company went broke and the creditors are sympathetic, and bad business judgment — even disastrous judgment — leaves the shield intact. A judge pierces the veil only where the company was deliberately set up or used to commit fraud. The test is dishonesty. It is not hardship, and it is not incompetence."}, {"ch": 5, "n": 5, "f": "A director is secretly enriching himself and the board will not act. As a small shareholder, what can you do?", "b": "Bring a derivative action. Directors owe a duty of loyalty, but it is owed to the corporation rather than to the shareholders — which creates a loop, since only the corporation can sue a disloyal director and the disloyal directors are the ones controlling the corporation, so it never sues. The derivative action is the fix: it lets a shareholder bring the claim on the company's behalf, stepping around a board that will not act against itself."}, {"ch": 5, "n": 6, "f": "The corporate shield protects directors from the company's debts. What can still reach a director personally?", "b": "Statutes. Unpaid wages, environmental breaches, unremitted taxes and safety violations all reach directors personally, and the company being a separate legal person does not save you on these. The defence is due diligence, meaning active and reasonable steps taken to prevent the failure: checking that wages were paid, confirming filings were made, putting procedures in place. Not knowing is not a defence — passivity is exactly what this defence is built to exclude."}, {"ch": 5, "n": 7, "f": "You are a director facing serious personal exposure. What do a corporate indemnity and D&O insurance actually protect you from?", "b": "Less than you would hope, and each has a hole. A corporate indemnity is a promise that the company will cover your legal costs, which is worth nothing the moment the company is insolvent — exactly when you need it. Directors and officers insurance survives the company's bankruptcy, but it only ever pays money. Neither one can absorb a criminal conviction: no policy and no promise serves a prison sentence for you."}, {"ch": 5, "n": 8, "f": "You know confidential bad news about your company. When does it become legal to trade on it?", "b": "Once the company has announced it publicly and the market has had a chance to absorb the news. Insider trading is a timing test, not a secrecy test — knowing confidential company information is not itself the offence; trading on it before the public has it is. Passing the information to someone else so they can trade is called tipping, and it is caught in the same way."}];
+const CHAPTERS = [1, 2, 3, 4, 5];
+const K = 'nppe.cards.v1';
+
+let state = {ch:'all', known:{}, };
+try { const s = JSON.parse(localStorage.getItem(K)||'{}'); if(s.known) state.known = s.known; if(s.ch) state.ch = s.ch; } catch(e){}
+function save(){ try{ localStorage.setItem(K, JSON.stringify({known:state.known, ch:state.ch})); }catch(e){} }
+const id = c => c.ch + '.' + c.n;
+
+let deck = [], pos = 0, flipped = false;
+
+function build(){
+  const pool = CARDS.filter(c => state.ch==='all' || c.ch===state.ch);
+  deck = pool.filter(c => !state.known[id(c)]);
+  if(!deck.length) deck = [];
+  pos = 0; flipped = false;
+}
+
+function shuffle(){
+  for(let i=deck.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [deck[i],deck[j]]=[deck[j],deck[i]]; }
+  pos=0; flipped=false; render();
+}
+
+function chips(){
+  const box = document.getElementById('chips');
+  box.innerHTML = '';
+  const mk = (label, val) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (state.ch===val?' on':'');
+    b.textContent = label;
+    b.onclick = () => { state.ch = val; save(); build(); render(); };
+    box.appendChild(b);
+  };
+  mk('All', 'all');
+  CHAPTERS.forEach(c => mk(c, c));
+}
+
+function render(){
+  chips();
+  const pool = CARDS.filter(c => state.ch==='all' || c.ch===state.ch);
+  const done = pool.filter(c => state.known[id(c)]).length;
+  document.getElementById('count').textContent = done + ' / ' + pool.length + ' known';
+  document.getElementById('bar').style.width = pool.length ? (done/pool.length*100)+'%' : '0%';
+
+  const stage = document.getElementById('stage');
+  if(pos >= deck.length){
+    stage.innerHTML = '<div class="done"><div class="big">' + done + '</div>'
+      + '<p>of ' + pool.length + ' cards marked known</p>'
+      + '<button id="reset">Review them all again</button></div>';
+    document.getElementById('reset').onclick = () => {
+      pool.forEach(c => delete state.known[id(c)]);
+      save(); build(); render();
+    };
+    return;
+  }
+  const c = deck[pos];
+  stage.innerHTML =
+    '<div class="card" id="card">'
+    + '<div class="tag">Chapter ' + c.ch + ' &middot; Card ' + c.n + '</div>'
+    + '<div class="q">' + c.f + '</div>'
+    + (flipped ? '<div class="a">' + c.b + '</div>' : '<div class="tapme">Tap to reveal</div>')
+    + '</div>'
+    + (flipped
+        ? '<div class="acts"><button class="again" id="again">Review again</button>'
+          + '<button class="good" id="good">Got it</button></div>'
+        : '')
+    + '<div class="nav"><button id="prev">&larr; Back</button>'
+    + '<button id="shuf">Shuffle</button>'
+    + '<button id="skip">Skip &rarr;</button></div>';
+
+  document.getElementById('card').onclick = () => { flipped = !flipped; render(); };
+  document.getElementById('prev').onclick = () => { if(pos>0){pos--; flipped=false; render();} };
+  document.getElementById('skip').onclick = () => { pos++; flipped=false; render(); };
+  document.getElementById('shuf').onclick = shuffle;
+  if(flipped){
+    document.getElementById('good').onclick = () => {
+      state.known[id(c)] = 1; save(); deck.splice(pos,1); flipped=false; render();
+    };
+    document.getElementById('again').onclick = () => {
+      const card = deck.splice(pos,1)[0];
+      deck.splice(Math.min(deck.length, pos+4), 0, card);
+      flipped=false; render();
+    };
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if(e.key===' '){ e.preventDefault(); flipped=!flipped; render(); }
+  else if(e.key==='ArrowRight'){ pos++; flipped=false; render(); }
+  else if(e.key==='ArrowLeft'){ if(pos>0){pos--; flipped=false; render();} }
+});
+
+build(); render();
+</script>
+</body>
+</html>
