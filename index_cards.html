@@ -73,7 +73,12 @@ main{padding-top:20px;}
 .bar-mini i{display:block;height:100%;background:var(--verdigris);}
 
 /* ---------- study card ---------- */
-.scene{perspective:1800px;}
+.scene{perspective:1800px;position:relative;touch-action:pan-y;will-change:transform;}
+.badge{position:absolute;top:16px;z-index:5;pointer-events:none;opacity:0;
+       font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+       padding:7px 13px;border-radius:7px;border:1.5px solid currentColor;background:var(--ink);}
+.b-easy{right:16px;color:var(--brass);transform:rotate(7deg);}
+.b-again{left:16px;color:var(--oxblood);transform:rotate(-7deg);}
 .flipper{display:grid;transform-style:preserve-3d;cursor:pointer;
          transition:transform .58s cubic-bezier(.2,.72,.24,1);}
 .flipper.flipped{transform:rotateY(180deg);}
@@ -97,6 +102,7 @@ main{padding-top:20px;}
 .hint{margin-top:auto;padding-top:22px;font-family:var(--mono);font-size:10.5px;
       letter-spacing:.1em;text-transform:uppercase;color:var(--faint);text-align:center;}
 .hint b{color:var(--brass);font-weight:400;}
+.hint .sw{display:block;margin-top:5px;opacity:.65;letter-spacing:.08em;}
 
 .grades{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:12px;
         opacity:0;pointer-events:none;transform:translateY(4px);
@@ -401,28 +407,74 @@ function studyView(){
   grades+='</div>';
 
   $('stage').innerHTML =
-      '<div class="scene"><div class="flipper" id="flip" style="--mat:'+mat+'%">'
+      '<div class="scene" id="scene">'
+    +   '<div class="badge b-again" id="bAgain">Again</div>'
+    +   '<div class="badge b-easy" id="bEasy">Easy</div>'
+    +   '<div class="flipper" id="flip" style="--mat:'+mat+'%">'
     +   '<div class="face front">'+ref+'<div class="q">'+esc(c.f)+'</div>'
-    +     '<div class="hint">Tap to turn <b>&#8635;</b></div></div>'
+    +     '<div class="hint">Tap to turn <b>&#8635;</b>'
+    +       '<span class="sw">swipe &#8592; again &nbsp;·&nbsp; easy &#8594;</span></div></div>'
     +   '<div class="face back">'+ref+'<div class="q-echo">'+esc(c.f)+'</div>'
-    +     '<div class="a">'+esc(c.b)+'</div></div>'
+    +     '<div class="a">'+esc(c.b)+'</div>'
+    +     '<div class="hint">Tap to turn back <b>&#8635;</b></div></div>'
     + '</div></div>'
     + grades
     + '<div class="subnav"><button class="link" id="undo"'+(history.length?'':' disabled')+'>Undo</button>'
     + '<button class="link" id="toDeck2">Chapters</button></div>';
 
-  $('flip').onclick=flip;
+  face='front'; bindGestures();
   $('toDeck2').onclick=()=>{ view='deck'; paint(); };
   $('undo').onclick=undo;
   [...document.querySelectorAll('.gr')].forEach(b=>b.onclick=()=>{ if(shown) answer(+b.dataset.g); });
-  if(shown){ $('flip').classList.add('flipped'); $('grades').classList.add('on'); }
+  if(shown){ face='back'; $('flip').classList.add('flipped'); $('grades').classList.add('on'); }
 }
 
-function flip(){
-  if(shown) return;
-  shown=true;
-  $('flip').classList.add('flipped');
-  $('grades').classList.add('on');
+let face='front';
+function turn(){
+  face = face==='front' ? 'back' : 'front';
+  $('flip').classList.toggle('flipped', face==='back');
+  if(face==='back' && !shown){ shown=true; $('grades').classList.add('on'); }
+}
+
+/* drag-to-grade: right = Easy, left = Again */
+const SWIPE=80;
+let dragging=false, sx=0, sy=0, dx=0, axis=null;
+function bindGestures(){
+  const sc=$('scene');
+  const paint2=v=>{ sc.style.transform = v ? 'translateX('+v+'px) rotate('+(v/30)+'deg)' : '';
+                    const p=Math.min(1,Math.abs(v)/SWIPE);
+                    $('bEasy').style.opacity  = v>0?p:0;
+                    $('bAgain').style.opacity = v<0?p:0; };
+  sc.addEventListener('pointerdown',e=>{
+    dragging=true; sx=e.clientX; sy=e.clientY; dx=0; axis=null;
+    sc.style.transition='none';
+    try{ sc.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  sc.addEventListener('pointermove',e=>{
+    if(!dragging) return;
+    const mx=e.clientX-sx, my=e.clientY-sy;
+    if(axis===null && (Math.abs(mx)>7||Math.abs(my)>7)) axis = Math.abs(mx)>Math.abs(my)?'x':'y';
+    if(axis!=='x') return;
+    dx=mx; paint2(dx);
+  });
+  const release=()=>{
+    if(!dragging) return;
+    dragging=false;
+    sc.style.transition='transform .26s ease, opacity .26s ease';
+    if(axis===null){ paint2(0); turn(); return; }          // tap
+    if(axis==='x' && Math.abs(dx)>=SWIPE){
+      if(!shown){ paint2(0); turn(); return; }             // reveal before grading
+      const g = dx>0?EASY:AGAIN;
+      sc.style.transform='translateX('+(dx>0?520:-520)+'px) rotate('+(dx>0?16:-16)+'deg)';
+      sc.style.opacity='0';
+      setTimeout(()=>answer(g),170);
+      return;
+    }
+    paint2(0);                                             // spring back
+  };
+  sc.addEventListener('pointerup',release);
+  sc.addEventListener('pointercancel',release);
+  sc.addEventListener('lostpointercapture',release);
 }
 
 function answer(g){
@@ -471,7 +523,7 @@ $('btnReset').onclick=()=>{
 
 document.addEventListener('keydown',e=>{
   if(view!=='study'||!current) return;
-  if(e.key===' '){ e.preventDefault(); flip(); }
+  if(e.key===' '){ e.preventDefault(); turn(); }
   else if(shown && ['1','2','3','4'].includes(e.key)) answer(+e.key-1);
   else if(e.key.toLowerCase()==='u') undo();
 });
