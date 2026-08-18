@@ -44,6 +44,11 @@ header{position:sticky;top:0;z-index:20;background:var(--ink);
      color:var(--muted);font-family:var(--mono);font-size:12px;cursor:pointer;
      display:flex;align-items:center;justify-content:center;transition:border-color .15s,color .15s;}
 .ico:hover{border-color:var(--brass);color:var(--brass);}
+.ico.live{color:var(--brass);border-color:rgba(201,162,39,.45);}
+.ico.live::after{content:'';position:absolute;width:5px;height:5px;border-radius:50%;
+                 background:var(--brass);transform:translate(11px,-11px);animation:pulse 1.4s infinite;}
+.ico{position:relative;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
 .gauge{display:flex;gap:16px;font-family:var(--mono);font-size:11.5px;padding-bottom:10px;}
 .gauge span{color:var(--faint);letter-spacing:.06em;}
 .gauge b{font-weight:600;font-variant-numeric:tabular-nums;}
@@ -168,6 +173,7 @@ main{padding-top:20px;}
       <div class="brand" id="brand"><b>Practical Law</b> · Cards</div>
       <div class="icons">
         <button class="ico" id="btnDeck" title="Chapters">☰</button>
+        <button class="ico" id="btnVoice" title="Voice">&#9834;</button>
         <button class="ico" id="btnTheme" title="Theme">◐</button>
         <button class="ico" id="btnSet" title="Settings">⚙</button>
       </div>
@@ -191,6 +197,10 @@ main{padding-top:20px;}
     <div class="seg" id="segNew"></div></div>
   <div class="row"><div>Exam mode<span class="sub">Caps how far ahead a card can be scheduled</span></div>
     <div class="seg" id="segCap"></div></div>
+  <div class="row"><div>Read aloud<span class="sub">Speaks the question, then the answer when you turn the card</span></div>
+    <div class="seg" id="segVoice"></div></div>
+  <div class="row"><div>Speech rate<span class="sub">Applies to the next thing spoken</span></div>
+    <div class="seg" id="segRate"></div></div>
   <div class="row"><div>Start over<span class="sub">Clears all scheduling for every chapter</span></div>
     <button class="danger" id="btnReset">Reset</button></div>
 </div>
@@ -209,7 +219,8 @@ const AGAIN=0, HARD=1, GOOD=2, EASY=3;
 const K='nppe.srs.v1', KOLD='nppe.cards.v1';
 const cid = c => c.ch+'.'+c.n;
 
-let S = {sched:{}, scope:'all', theme:'graphite', perDay:20, cap:14, day:'', intro:0};
+let S = {sched:{}, scope:'all', theme:'graphite', perDay:20, cap:14, day:'', intro:0,
+         voice:1, rate:1};
 try{ const s=JSON.parse(localStorage.getItem(K)||'{}'); Object.assign(S,s); }catch(e){}
 
 /* one-time carry-over from the earlier version's "known" flags */
@@ -303,6 +314,51 @@ function fmt(ms){
   return (d/365).toFixed(1)+'y';
 }
 
+/* ============ speech ============ */
+const TTS = ('speechSynthesis' in window);
+let vObj=null, primed=false, pendingSpeak=false;
+
+function pickVoice(){
+  if(!TTS) return;
+  const vs=speechSynthesis.getVoices();
+  if(!vs.length) return;
+  vObj = vs.find(v=>v.lang==='en-CA')
+      || vs.find(v=>/^en-(GB|US|AU)/.test(v.lang))
+      || vs.find(v=>/^en/.test(v.lang)) || null;
+}
+if(TTS){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+
+function stopSpeak(){ if(TTS) try{ speechSynthesis.cancel(); }catch(e){} liveIcon(false); }
+
+function speak(text){
+  if(!TTS || !S.voice) return;
+  stopSpeak();
+  /* split into sentences: keeps every utterance well under the ~15s
+     window where Chrome silently truncates a long one */
+  const parts = String(text).match(/[^.!?]+[.!?]*/g) || [String(text)];
+  const chunks = parts.map(s=>s.trim()).filter(Boolean);
+  if(!chunks.length) return;
+  chunks.forEach((s,i)=>{
+    const u=new SpeechSynthesisUtterance(s);
+    u.rate=S.rate; u.pitch=1; u.lang='en-CA';
+    if(vObj) u.voice=vObj;
+    if(i===0) u.onstart=()=>liveIcon(true);
+    if(i===chunks.length-1){ u.onend=()=>liveIcon(false); u.onerror=()=>liveIcon(false); }
+    try{ speechSynthesis.speak(u); }catch(e){}
+  });
+}
+function liveIcon(on){ const b=$('btnVoice'); if(b) b.classList.toggle('live', !!on && !!S.voice); }
+function speakFace(){ if(current) speak(face==='back' ? current.b : current.f); }
+
+/* iOS will not speak unless speech has been started once inside a real
+   gesture, so unlock silently on the first touch and speak normally after */
+document.addEventListener('pointerdown', function unlock(){
+  document.removeEventListener('pointerdown', unlock, true);
+  primed=true;
+  if(!TTS) return;
+  try{ const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u); }catch(e){}
+}, true);
+
 /* ============ queue ============ */
 const inScope = c => S.scope==='all' || c.ch===S.scope;
 function buckets(list){
@@ -337,6 +393,7 @@ function pick(){
   rebuild();
   current = queue.length?queue[0]:null;
   shown=false;
+  pendingSpeak = !!current;
 }
 
 /* ============ render ============ */
@@ -423,6 +480,7 @@ function studyView(){
     + '<button class="link" id="toDeck2">Chapters</button></div>';
 
   face='front'; bindGestures();
+  if(pendingSpeak){ pendingSpeak=false; if(primed) speakFace(); }
   $('toDeck2').onclick=()=>{ view='deck'; paint(); };
   $('undo').onclick=undo;
   [...document.querySelectorAll('.gr')].forEach(b=>b.onclick=()=>{ if(shown) answer(+b.dataset.g); });
@@ -434,6 +492,7 @@ function turn(){
   face = face==='front' ? 'back' : 'front';
   $('flip').classList.toggle('flipped', face==='back');
   if(face==='back' && !shown){ shown=true; $('grades').classList.add('on'); }
+  speakFace();
 }
 
 /* drag-to-grade: right = Easy, left = Again */
@@ -491,7 +550,7 @@ function undo(){
   S.sched[h.k]=h.prev; S.intro=h.intro; sessionDone=h.done; save();
   pick(); paint();
 }
-function paint(){ paintHead(); view==='deck'?deckView():studyView(); }
+function paint(){ if(view==='deck') stopSpeak(); paintHead(); view==='deck'?deckView():studyView(); }
 
 /* ============ chrome ============ */
 document.documentElement.dataset.theme=S.theme;
@@ -500,10 +559,17 @@ $('btnTheme').onclick=()=>{ S.theme = S.theme==='graphite'?'vellum':'graphite';
   document.querySelector('meta[name=theme-color]').content = S.theme==='graphite'?'#1B1E24':'#EEF0F4';
   save(); };
 $('btnDeck').onclick=()=>{ view = view==='deck'?'study':'deck'; paint(); };
+$('btnVoice').onclick=()=>{
+  S.voice = S.voice?0:1; save(); segs();
+  if(S.voice){ primed=true; speakFace(); } else stopSpeak();
+  $('btnVoice').style.color = S.voice ? '' : 'var(--faint)';
+  $('btnVoice').style.opacity = S.voice ? '' : '.5';
+};
+if(!S.voice){ $('btnVoice').style.opacity='.5'; }
 
 const veil=$('veil'), sheet=$('sheet');
 const closeSheet=()=>{ veil.classList.remove('on'); sheet.classList.remove('on'); };
-$('btnSet').onclick=()=>{ veil.classList.add('on'); sheet.classList.add('on'); };
+$('btnSet').onclick=()=>{ stopSpeak(); veil.classList.add('on'); sheet.classList.add('on'); };
 veil.onclick=closeSheet;
 
 function segs(){
@@ -513,6 +579,8 @@ function segs(){
       b.onclick=()=>{ fn(val); save(); segs(); pick(); paint(); }; el.appendChild(b); }); };
   mk($('segNew'), [['10',10],['20',20],['40',40],['All',0]], S.perDay, v=>S.perDay=v);
   mk($('segCap'), [['Off',0],['3d',3],['7d',7],['14d',14]], S.cap, v=>S.cap=v);
+  mk($('segVoice'), [['Off',0],['On',1]], S.voice, v=>{ S.voice=v; if(!v) stopSpeak(); });
+  mk($('segRate'), [['0.9',0.9],['1.0',1],['1.2',1.2],['1.4',1.4]], S.rate, v=>S.rate=v);
 }
 segs();
 $('btnReset').onclick=()=>{
