@@ -197,6 +197,10 @@ main{padding-top:20px;}
     <div class="seg" id="segNew"></div></div>
   <div class="row"><div>Exam mode<span class="sub">Caps how far ahead a card can be scheduled</span></div>
     <div class="seg" id="segCap"></div></div>
+  <div class="row"><div>Card order<span class="sub">Shuffled draws new cards across all chapters at random</span></div>
+    <div class="seg" id="segMix"></div></div>
+  <div class="row"><div>Reshuffle deck<span class="sub">Draws a fresh random sequence, keeps all your progress</span></div>
+    <button class="danger" id="btnShuffle" style="border-color:rgba(201,162,39,.45);color:var(--brass)">Shuffle</button></div>
   <div class="row"><div>Read aloud<span class="sub">Speaks the question, then the answer when you turn the card</span></div>
     <div class="seg" id="segVoice"></div></div>
   <div class="row"><div>Speech rate<span class="sub">Applies to the next thing spoken</span></div>
@@ -220,7 +224,7 @@ const K='nppe.srs.v1', KOLD='nppe.cards.v1';
 const cid = c => c.ch+'.'+c.n;
 
 let S = {sched:{}, scope:'all', theme:'graphite', perDay:20, cap:14, day:'', intro:0,
-         voice:1, rate:1};
+         voice:1, rate:1, mix:'shuffle', order:null};
 try{ const s=JSON.parse(localStorage.getItem(K)||'{}'); Object.assign(S,s); }catch(e){}
 
 /* one-time carry-over from the earlier version's "known" flags */
@@ -359,6 +363,24 @@ document.addEventListener('pointerdown', function unlock(){
   try{ const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u); }catch(e){}
 }, true);
 
+/* ============ new-card ordering ============ */
+/* A persisted shuffle, not a re-roll each render: the sequence stays put
+   across reloads, so the deck feels ordered rather than jittery, while
+   still crossing chapters instead of marching 1,2,3 through the file. */
+let ORD={};
+function ensureOrder(){
+  const keys=CARDS.map(cid);
+  if(!Array.isArray(S.order)) S.order=[];
+  const have=new Set(S.order);
+  const add=keys.filter(k=>!have.has(k));
+  if(add.length){
+    for(let i=add.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[add[i],add[j]]=[add[j],add[i]];}
+    S.order=S.order.concat(add); save();
+  }
+  ORD={}; S.order.forEach((k,i)=>{ORD[k]=i;});
+}
+function reshuffle(){ S.order=null; ensureOrder(); }
+
 /* ============ queue ============ */
 const inScope = c => S.scope==='all' || c.ch===S.scope;
 function buckets(list){
@@ -376,7 +398,9 @@ function rebuild(){
   rollDay();
   const b=buckets(CARDS.filter(inScope));
   const room=Math.max(0,(S.perDay===0?999:S.perDay)-S.intro);
-  const fresh=b.new.slice(0,room);
+  let pool=b.new.slice();
+  if(S.mix!=='ordered') pool.sort((x,y)=>ORD[cid(x)]-ORD[cid(y)]);
+  const fresh=pool.slice(0,room);
   const rev=b.due.slice();
   for(let i=rev.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[rev[i],rev[j]]=[rev[j],rev[i]];}
   queue=[];
@@ -385,7 +409,7 @@ function rebuild(){
     for(let k=0;k<3&&ri<rev.length;k++) queue.push(rev[ri++]);
     if(ni<fresh.length) queue.push(fresh[ni++]);
   }
-  queue = b.lrn.concat(queue);
+  queue = b.lrn.slice().sort((x,y)=>get(x).due-get(y).due).concat(queue);
   sessionTotal = Math.max(sessionTotal, sessionDone+queue.length);
 }
 
@@ -579,13 +603,15 @@ function segs(){
       b.onclick=()=>{ fn(val); save(); segs(); pick(); paint(); }; el.appendChild(b); }); };
   mk($('segNew'), [['10',10],['20',20],['40',40],['All',0]], S.perDay, v=>S.perDay=v);
   mk($('segCap'), [['Off',0],['3d',3],['7d',7],['14d',14]], S.cap, v=>S.cap=v);
+  mk($('segMix'), [['Shuffled','shuffle'],['By chapter','ordered']], S.mix, v=>S.mix=v);
   mk($('segVoice'), [['Off',0],['On',1]], S.voice, v=>{ S.voice=v; if(!v) stopSpeak(); });
   mk($('segRate'), [['0.9',0.9],['1.0',1],['1.2',1.2],['1.4',1.4]], S.rate, v=>S.rate=v);
 }
 segs();
+$('btnShuffle').onclick=()=>{ reshuffle(); S.mix='shuffle'; save(); segs(); pick(); paint(); closeSheet(); };
 $('btnReset').onclick=()=>{
   if(!confirm('Clear scheduling for all '+CARDS.length+' cards?')) return;
-  S.sched={}; S.intro=0; history=[]; sessionDone=0; sessionTotal=0; save();
+  S.sched={}; S.intro=0; S.order=null; ensureOrder(); history=[]; sessionDone=0; sessionTotal=0; save();
   closeSheet(); pick(); paint();
 };
 
@@ -596,6 +622,7 @@ document.addEventListener('keydown',e=>{
   else if(e.key.toLowerCase()==='u') undo();
 });
 
+ensureOrder();
 pick(); paint();
 </script>
 </body>
